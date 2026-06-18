@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lrc-tools"
+version = "0.1.0"
+description = "Terminal lyrics visualizer and LRC/WLRC processing suite (playerctl + LRCLIB)"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [{ name = "Hamza Abdelmoumene" }]
+keywords = ["lyrics", "lrc", "wlrc", "spotify", "playerctl", "terminal", "tui"]
+classifiers = [
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Players",
+]
+dependencies = [
+    "syncedlyrics>=0.7",
+    "mutagen>=1.45",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Per-word onset detection (real timing instead of even spacing).
+onset = ["librosa>=0.10", "numpy>=1.23"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+lrc-vis = "lrc_tools.lrc_vis_cli:main"
+lrc-fetch = "lrc_tools.lrc_puller_cli:main"
+lrc-processor = "lrc_tools.lrc_processor_cli:main"
+
+[project.urls]
+# TODO: update to your fork once pushed.
+Homepage = "https://github.com/hamza-abdel/lrc-tools"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+lrc_tools = ["custom_fonts.json", "config_example.yaml"]
