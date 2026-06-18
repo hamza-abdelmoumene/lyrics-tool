@@ -218,6 +218,39 @@ def search_lrclib(
     return []
 
 
+def get_lrclib(
+    artist: str,
+    title: str,
+    album: Optional[str] = None,
+    duration: Optional[float] = None,
+    timeout: float = 8.0,
+) -> Optional[str]:
+    """
+    Exact-match lookup via LRCLIB's /api/get endpoint.
+
+    Faster and more precise than /api/search: a single request that returns one
+    record (or 404) instead of a list to scan. Ideal for the currently playing
+    track, where artist/title/album/duration are all known from the player.
+
+    Returns synced (preferred) or plain lyrics, or None on any miss/error.
+    """
+    params: Dict[str, str] = {'artist_name': artist, 'track_name': title}
+    if album:
+        params['album_name'] = album
+    if duration is not None:
+        params['duration'] = str(int(duration))
+
+    url = f"https://lrclib.net/api/get?{parse.urlencode(params)}"
+    try:
+        with request.urlopen(url, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode())
+            return _pick_lyrics(data, prefer_synced=True)
+    except (HTTPError, URLError, TimeoutError):
+        return None
+    except Exception:
+        return None
+
+
 def _pick_lyrics(result: Dict, prefer_synced: bool = True) -> Optional[str]:
     """Extract the best available lyrics string from an LRCLIB result dict."""
     if prefer_synced:

@@ -49,6 +49,29 @@ def get_track() -> Optional[Tuple[str, str]]:
         return None
 
 
+def get_track_full() -> Optional[Tuple[str, str, Optional[str], Optional[float]]]:
+    """
+    Get rich track metadata in a single playerctl call.
+
+    Returns:
+        (artist, title, album, duration_seconds) or None. album/duration may be
+        None when the player doesn't expose them. Used for exact LRCLIB lookups.
+    """
+    try:
+        result = _run_playerctl(
+            ['metadata', '--format', '{{artist}}|||{{title}}|||{{album}}|||{{mpris:length}}']
+        )
+        if result.returncode == 0:
+            parts = result.stdout.strip().split('|||')
+            if len(parts) == 4:
+                artist, title, album, length = parts
+                duration = int(length) / 1_000_000 if length.isdigit() else None
+                return (artist, title, album or None, duration)
+    except Exception:
+        return None
+    return None
+
+
 def get_status() -> Optional[str]:
     """
     Get current playback status.

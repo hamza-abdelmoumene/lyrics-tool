@@ -64,36 +64,67 @@ def position_monitor(sync_data: SyncData, get_position_func, get_track_func, get
         last_check = time.time()
 
 
+# Tracks we've already failed to find lyrics for — don't re-hit the network
+# every display tick for a song that simply has no lyrics available.
+_no_lyrics_cache = set()
+
+
 def fetch_lyrics_on_the_fly(artist: str, title: str, lrc_dir: Path, is_wlrc: bool = False) -> Optional[Path]:
-    """Search for lyrics on-the-fly and save/process them in lrc_dir."""
-    from .puller import search_lrclib, search_syncedlyrics, _clean_title, _pick_lyrics
+    """Fetch lyrics for the playing track and save/process them in lrc_dir.
+
+    Fast path: a single exact LRCLIB ``/api/get`` using the album + duration the
+    player already exposes for the current track. Broader search runs only on a
+    miss; repeated misses for the same track are cached to skip the network.
+    """
+    from .puller import (
+        search_lrclib, search_syncedlyrics, _clean_title, _pick_lyrics, get_lrclib,
+    )
     from .parser import parse_lrc, write_lrc
     from .processor_main import process_long_phrases, phrases_to_words
+    from .visualizer_player import get_track_full
+
+    cache_key = (artist.lower(), title.lower())
+    if cache_key in _no_lyrics_cache:
+        return None
 
     # 1. Clean the title and artist for searching
     clean_art = artist.split(', ')[0].strip() if ', ' in artist else artist
     clean_tit = _clean_title(title)
 
+    # Pull album + duration straight from the player for an exact match.
+    album = duration = None
+    full = get_track_full()
+    if full:
+        _, _, album, duration = full
+
     content = None
 
-    # Try clean metadata on LRCLIB
-    try:
-        results = search_lrclib(clean_art, clean_tit)
-        if results:
-            content = _pick_lyrics(results[0], prefer_synced=True)
-    except Exception:
-        pass
+    # Fast path: exact LRCLIB lookup (one request). The player's RAW metadata is
+    # the same signature LRCLIB indexes (both originate from Spotify/Musixmatch),
+    # so it's the most likely hit — try it first, clean only as a backup.
+    content = get_lrclib(artist, title, album, duration)
+    if not content and (clean_tit != title or clean_art != artist):
+        content = get_lrclib(clean_art, clean_tit, album, duration)
 
-    # Try original title if clean title is different
-    if not content and clean_tit != title:
+    # Fallback: duration-scoped fuzzy search on clean metadata.
+    if not content:
         try:
-            results = search_lrclib(clean_art, title)
+            results = search_lrclib(clean_art, clean_tit, duration)
             if results:
                 content = _pick_lyrics(results[0], prefer_synced=True)
         except Exception:
             pass
 
-    # Try syncedlyrics fallback
+    # Try the original (uncleaned) title.
+    if not content and clean_tit != title:
+        try:
+            results = search_lrclib(clean_art, title, duration)
+            if results:
+                content = _pick_lyrics(results[0], prefer_synced=True)
+        except Exception:
+            pass
+
+    # Last resort: syncedlyrics (multi-provider, slower).
     if not content:
         try:
             content = search_syncedlyrics(clean_art, clean_tit)
@@ -101,6 +132,7 @@ def fetch_lyrics_on_the_fly(artist: str, title: str, lrc_dir: Path, is_wlrc: boo
             pass
 
     if not content:
+        _no_lyrics_cache.add(cache_key)
         return None
 
     # Clean filename to avoid invalid characters
