@@ -466,8 +466,8 @@ def display_now_playing_glitch(
     font_data: dict = None,
     bg: Optional[RGB] = None,
     fg: Optional[RGB] = None,
-    frames: int = 13,
-    frame_dt: float = 0.04,
+    frames: int = 8,
+    frame_dt: float = 0.03,
 ):
     """Announce a track with a short glitch burst, then settle to the clean card.
 

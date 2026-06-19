@@ -35,6 +35,9 @@ def main():
                         help='MPRIS player to follow (e.g. spotify, mpv, vlc). '
                              'Default: auto-detect the active player, so both '
                              'Spotify and local players work out of the box')
+    parser.add_argument('--banner-hold', type=float, default=0.8,
+                        help='Seconds the song-title card stays up on a track '
+                             'switch before lyrics take over (default: 0.8)')
     parser.add_argument('--config', type=Path,
                         help='Path to config.yaml')
 
@@ -84,6 +87,7 @@ def main():
             sync_offset=args.offset,
             cover_color=not args.no_cover_color,
             notes=not args.no_notes,
+            banner_hold=args.banner_hold,
         )
     except KeyboardInterrupt:
         print("\nExiting...")

@@ -222,6 +222,7 @@ def run_visualizer(
     sync_offset: float = 0.0,
     cover_color: bool = True,
     notes: bool = True,
+    banner_hold: float = 0.8,
 ):
     """Run the LRC visualizer main loop.
 
@@ -258,8 +259,9 @@ def run_visualizer(
 
     # Total time the now-playing card stays up (glitch burst included) before
     # lyrics take over. Kept short so the words show up quickly; they re-anchor
-    # to live position when they do, so there's no late/early drift.
-    BANNER_HOLD = 1.2
+    # to live position when they do, so there's no late/early drift. Floored so
+    # the glitch still resolves cleanly even if a tiny value is passed.
+    BANNER_HOLD = max(0.45, banner_hold)
 
     def _resolve_colors():
         """Fetch (card_bg, card_fg, lyric_color) for the current art, off-thread.
@@ -318,6 +320,7 @@ def run_visualizer(
         # Album-cover accent the current track's lyrics are painted in (None =
         # default terminal colour, e.g. cover_color off or art/Pillow missing).
         lyric_color = None
+        color_holder = None  # off-thread cover-colour result for the current track
 
         while sync_data.running:
             state = get_state()
@@ -344,21 +347,24 @@ def run_visualizer(
             banner_until = 0.0
             if title != last_title:
                 last_title = title
-                holder = th = None
                 if cover_color:
-                    holder, th = _resolve_colors()
-                # Time the window from here so the ~0.5s glitch counts toward it.
+                    color_holder, _ = _resolve_colors()
+                else:
+                    color_holder = None
+                # Time the window from here so the glitch counts toward it.
                 banner_until = time.monotonic() + BANNER_HOLD
                 display_now_playing_glitch(artist, title, font_data)
 
-                card_bg = card_fg = None
-                lyric_color = None
-                if th is not None:
-                    th.join(timeout=0.6)  # usually already done after the glitch
-                    card_bg, card_fg = holder['card_bg'], holder['card_fg']
-                    lyric_color = holder['lyric']
-                # Reveal the settled card in the cover's colour.
-                display_now_playing(artist, title, font_data, bg=card_bg, fg=card_fg)
+                # Non-blocking: reveal the card in whatever colour has resolved
+                # so far (often already done after the glitch, instant on the
+                # cached-cover replay path). We never wait on the download here —
+                # the lyrics pick the colour up later if it lands after the card.
+                lyric_color = color_holder['lyric'] if color_holder else None
+                display_now_playing(
+                    artist, title, font_data,
+                    bg=color_holder['card_bg'] if color_holder else None,
+                    fg=color_holder['card_fg'] if color_holder else None,
+                )
 
             audio_file = get_audio_file_info()
             lookup = audio_file if audio_file else Path(title)
@@ -445,6 +451,15 @@ def run_visualizer(
                 tq = None
                 if note_field is not None:
                     tq = int(time.monotonic() / NOTE_DT)
+                # Pick up the cover colour the moment the off-thread fetch lands
+                # (so the card could appear before the download finished without
+                # the lyrics missing their tint).
+                if lyric_color is None and color_holder is not None and color_holder['done']:
+                    new_color = color_holder['lyric']
+                    if new_color is not None:
+                        lyric_color = new_color
+                        last_text = None  # force a repaint in the new colour
+
                 if text != last_text or tq != last_tq:
                     last_text, last_tq = text, tq
                     if note_field is not None:
