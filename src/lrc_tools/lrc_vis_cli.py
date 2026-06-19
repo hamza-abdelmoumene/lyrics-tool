@@ -22,6 +22,9 @@ def main():
                         help='Path to custom fonts JSON file')
     parser.add_argument('--refresh-rate', type=float, default=0.05,
                         help='Display refresh rate in seconds (default: 0.05)')
+    parser.add_argument('--offset', type=float, default=0.0,
+                        help='Lyric sync offset in seconds: positive shows '
+                             'lyrics earlier, negative later (default: 0)')
     parser.add_argument('--config', type=Path,
                         help='Path to config.yaml')
 
@@ -63,7 +66,8 @@ def main():
             audio_dir=args.audio_dir,
             is_wlrc=args.wlrc,
             font_data=font_data,
-            refresh_rate=args.refresh_rate
+            refresh_rate=args.refresh_rate,
+            sync_offset=args.offset,
         )
     except KeyboardInterrupt:
         print("\nExiting...")

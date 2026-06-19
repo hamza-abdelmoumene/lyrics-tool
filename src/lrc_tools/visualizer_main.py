@@ -12,56 +12,75 @@ class SyncData:
     """Shared synchronization data for visualizer"""
 
     def __init__(self):
-        self.position: Optional[float] = None
+        self.latest = None  # most recent PlayerState from the monitor thread
         self.should_resync: bool = False
         self.running: bool = True
         self.current_title: Optional[str] = None
         self.paused: bool = False
 
 
-def position_monitor(sync_data: SyncData, get_position_func, get_track_func, get_status_func):
-    """Background thread to monitor playback position and detect seeking."""
-    last_check = time.time()
+def position_monitor(sync_data: SyncData, get_state_func):
+    """Background thread that flags when the display loop must re-anchor.
+
+    One playerctl call per tick detects three events — track change, pause/
+    unpause and seek — and raises ``should_resync``. The latest snapshot is
+    stashed in ``sync_data.latest`` so the display loop can re-anchor from it
+    without spawning another subprocess.
+    """
     expected_pos = None
+    last_sample = None
 
     while sync_data.running:
         time.sleep(0.2)
 
-        track_info = get_track_func()
-        if track_info and sync_data.current_title:
-            if track_info[1] != sync_data.current_title:
-                sync_data.should_resync = True
-                continue
-
-        if sync_data.position is None:
+        state = get_state_func()
+        if state is None:
             continue
+        sync_data.latest = state
 
-        actual_pos = get_position_func()
-        if actual_pos is None:
-            continue
-
-        status = get_status_func()
-        if status == 'Paused':
-            sync_data.position = actual_pos
+        # Track change → display loop reloads lyrics and re-announces.
+        if sync_data.current_title and state.title != sync_data.current_title:
             sync_data.should_resync = True
-            sync_data.paused = True
             expected_pos = None
+            last_sample = None
             continue
 
-        sync_data.paused = False
+        if state.status == 'Paused':
+            if not sync_data.paused:
+                sync_data.paused = True
+                sync_data.should_resync = True
+            expected_pos = None
+            last_sample = None
+            continue
 
-        if expected_pos is None:
-            expected_pos = actual_pos
-        else:
-            elapsed = time.time() - last_check
-            expected_pos += elapsed
-
-        if abs(actual_pos - expected_pos) > 1.0:
-            sync_data.position = actual_pos
+        if sync_data.paused:  # just resumed
+            sync_data.paused = False
             sync_data.should_resync = True
 
-        expected_pos = actual_pos
-        last_check = time.time()
+        # Seek detection: compare the reported position against where
+        # free-running playback should be since the previous sample.
+        if expected_pos is not None and last_sample is not None:
+            expected = expected_pos + (state.sampled_at - last_sample)
+            if abs(state.position - expected) > 0.5:
+                sync_data.should_resync = True
+
+        expected_pos = state.position
+        last_sample = state.sampled_at
+
+
+def _index_for(lines, pos: float) -> int:
+    """Index of the last lyric line whose timestamp is <= pos.
+
+    Returns -1 when ``pos`` precedes the first line (song intro), so the loop
+    can show a blank screen instead of flashing the first line early.
+    """
+    idx = -1
+    for i, (start, _) in enumerate(lines):
+        if pos >= start:
+            idx = i
+        else:
+            break
+    return idx
 
 
 # Tracks we've already failed to find lyrics for — don't re-hit the network
@@ -191,13 +210,30 @@ def run_visualizer(
     audio_dir: Optional[Path] = None,
     is_wlrc: bool = False,
     font_data: dict = None,
-    refresh_rate: float = 0.05
+    refresh_rate: float = 0.05,
+    sync_offset: float = 0.0,
 ):
-    """Run the LRC visualizer main loop."""
-    from .visualizer_player import get_position, get_track, get_status, get_audio_file_info
-    from .visualizer_display import display_text, display_waiting, hide_cursor, show_cursor, clear_screen
+    """Run the LRC visualizer main loop.
+
+    On every track change the song's name is announced as a full-screen card,
+    then its lyrics start in lock-step with the audio. Playback position is read
+    once per anchor (with sub-call latency compensation) and extrapolated with
+    the monotonic clock between reads, so lines flip on time without polling the
+    player every frame.
+
+    ``sync_offset`` shifts lyrics in seconds: positive shows them earlier,
+    negative later. The default of 0 should already line up with the audio.
+    """
+    from .visualizer_player import get_state, get_audio_file_info
+    from .visualizer_display import (
+        display_text, display_waiting, display_now_playing,
+        hide_cursor, show_cursor, clear_screen,
+    )
     from .parser import parse_lrc_simple
     from .audio import find_lrc_for_audio
+
+    # Minimum time the now-playing card stays up so the name is readable.
+    BANNER_HOLD = 1.5
 
     hide_cursor()
     clear_screen()
@@ -207,23 +243,41 @@ def run_visualizer(
 
     monitor_thread = threading.Thread(
         target=position_monitor,
-        args=(sync_data, get_position, get_track, get_status),
-        daemon=True
+        args=(sync_data, get_state),
+        daemon=True,
     )
     monitor_thread.start()
+
+    def _anchor(state):
+        """Return (start_pos, start_time) for the given snapshot.
+
+        start_time is None while paused (frozen); otherwise it is the monotonic
+        instant that start_pos corresponds to, latency-compensated to *now*.
+        """
+        if state.status == 'Paused':
+            sync_data.paused = True
+            return state.position + sync_offset, None
+        sync_data.paused = False
+        now = time.monotonic()
+        return state.position + (now - state.sampled_at) + sync_offset, now
 
     try:
         last_title = None
 
         while sync_data.running:
-            track = get_track()
-            if not track:
-                time.sleep(1)
+            state = get_state()
+            if state is None:
+                time.sleep(0.5)
                 continue
 
-            artist, title = track
-            song_changed = last_title and title != last_title
-            last_title = title
+            artist, title = state.artist, state.title
+
+            # New track → announce it before anything else.
+            banner_until = 0.0
+            if title != last_title:
+                last_title = title
+                display_now_playing(artist, title, font_data)
+                banner_until = time.monotonic() + BANNER_HOLD
 
             audio_file = get_audio_file_info()
             lookup = audio_file if audio_file else Path(title)
@@ -244,10 +298,10 @@ def run_visualizer(
                 lrc = fetch_lyrics_on_the_fly(artist, title, lrc_dir, is_wlrc=is_wlrc)
 
             if not lrc:
+                # No lyrics — leave the now-playing card up and retry shortly.
                 time.sleep(1)
                 continue
 
-            sync_data.current_title = title
             if derive_words:
                 from .parser import parse_lrc
                 from .processor_main import phrases_to_words
@@ -259,65 +313,50 @@ def run_visualizer(
                 time.sleep(1)
                 continue
 
-            pos = get_position()
-            if pos is None:
-                time.sleep(1)
+            # Hold the card for the rest of BANNER_HOLD, but bail early if the
+            # user skips again (monitor keeps sync_data.latest fresh).
+            skipped = False
+            while time.monotonic() < banner_until and sync_data.running:
+                time.sleep(0.1)
+                snap = sync_data.latest
+                if snap is not None and snap.title != title:
+                    skipped = True
+                    break
+            if skipped:
                 continue
 
-            if song_changed and pos > 5.0:
-                for _ in range(20):
-                    pos = get_position()
-                    if pos is not None and pos < 5.0:
-                        break
-                    time.sleep(0.1)
+            # Anchor to a fresh, precise sample for the first painted line.
+            state = get_state()
+            if state is None or state.title != title:
+                continue
+            sync_data.current_title = title
+            start_pos, start_time = _anchor(state)
+            idx = _index_for(lines, start_pos)
+            sync_data.should_resync = False
 
-                pos = get_position()
-                if pos is None:
-                    time.sleep(1)
-                    continue
-
-            idx = 0
-            for i, (start, _) in enumerate(lines):
-                if pos < start:
-                    break
-                idx = i
-
-            start_time = time.time()
-            start_pos = pos
-            sync_data.position = pos
-
-            while idx < len(lines):
+            while sync_data.running:
                 if sync_data.should_resync:
-                    new_track = get_track()
-                    if not new_track or new_track[1] != title:
-                        break
-
-                    new_pos = sync_data.position
-                    start_time = time.time()
-                    start_pos = new_pos
-
-                    idx = 0
-                    for i, (start, _) in enumerate(lines):
-                        if new_pos >= start:
-                            idx = i
-                        else:
-                            break
-
                     sync_data.should_resync = False
+                    snap = sync_data.latest
+                    if snap is not None and snap.title != title:
+                        break  # new song → outer loop reloads + re-announces
+                    if snap is not None:
+                        start_pos, start_time = _anchor(snap)
+                        idx = _index_for(lines, start_pos)
 
-                elapsed = time.time() - start_time
-                current_pos = start_pos + elapsed
+                if start_time is None:  # paused/frozen
+                    current_pos = start_pos
+                else:
+                    current_pos = start_pos + (time.monotonic() - start_time)
 
-                _, text = lines[idx]
+                # Advance to the line that should be on screen now.
+                while idx + 1 < len(lines) and current_pos >= lines[idx + 1][0]:
+                    idx += 1
+
+                text = '' if idx < 0 else lines[idx][1]
                 # Diffed render: repaints only when the line (or terminal size)
                 # changes, so this is cheap to call every tick.
                 display_text(text, use_block_letters=True, font_data=font_data, clear=False)
-
-                if idx + 1 < len(lines):
-                    next_start, _ = lines[idx + 1]
-                    if current_pos >= next_start:
-                        idx += 1
-                        continue
 
                 # Spin slower while paused — nothing advances, so save CPU.
                 time.sleep(0.3 if sync_data.paused else refresh_rate)

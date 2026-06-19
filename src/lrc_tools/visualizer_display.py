@@ -86,27 +86,12 @@ def _center_block(block_lines: List[str], cols: int, rows: int) -> str:
     return '\n'.join(output)
 
 
-def render_block_text(text: str, font_data: dict) -> str:
+def _pack_block_lines(text: str, font_data: dict, cols: int) -> tuple:
+    """Render text into stacked block-letter rows that fit ``cols`` wide.
+
+    Returns (block_lines, max_width). Words are greedily packed into rows and
+    rows stacked with a blank separator between them.
     """
-    Render text using block letters, adapting to the terminal size.
-
-    Wraps the phrase across multiple block-letter rows so it fits the current
-    width, and falls back to plain centered text when block letters cannot fit
-    (terminal too narrow for a single word, or too short for the stacked rows).
-
-    Args:
-        text: Text to render
-        font_data: Font dictionary mapping characters to line arrays
-
-    Returns:
-        Rendered text as string sized to the current terminal
-    """
-    cols, rows = get_terminal_size()
-    key = ('block', text, cols, rows)
-    cached = _render_cache.get(key)
-    if cached is not None:
-        return cached
-
     height = len(font_data.get('A', ['']))
     words = text.upper().split() or ['']
 
@@ -132,6 +117,31 @@ def render_block_text(text: str, font_data: dict) -> str:
         block_lines.extend(_render_block_line(rw, font_data, height))
 
     max_width = max((len(l) for l in block_lines), default=0)
+    return block_lines, max_width
+
+
+def render_block_text(text: str, font_data: dict) -> str:
+    """
+    Render text using block letters, adapting to the terminal size.
+
+    Wraps the phrase across multiple block-letter rows so it fits the current
+    width, and falls back to plain centered text when block letters cannot fit
+    (terminal too narrow for a single word, or too short for the stacked rows).
+
+    Args:
+        text: Text to render
+        font_data: Font dictionary mapping characters to line arrays
+
+    Returns:
+        Rendered text as string sized to the current terminal
+    """
+    cols, rows = get_terminal_size()
+    key = ('block', text, cols, rows)
+    cached = _render_cache.get(key)
+    if cached is not None:
+        return cached
+
+    block_lines, max_width = _pack_block_lines(text, font_data, cols)
 
     # Block letters still don't fit (a single word too wide, or too many rows):
     # degrade gracefully to wrapped plain text rather than clipping.
@@ -146,6 +156,28 @@ def render_block_text(text: str, font_data: dict) -> str:
         _render_cache.clear()
     _render_cache[key] = frame
     return frame
+
+
+def render_now_playing(artist: str, title: str, font_data: dict) -> str:
+    """Render a full-screen 'now playing' card: title in block letters with the
+    artist on a plain centered line beneath it."""
+    cols, rows = get_terminal_size()
+
+    if font_data:
+        block_lines, max_width = _pack_block_lines(title, font_data, cols)
+        if max_width > cols or len(block_lines) + 2 > rows:
+            import textwrap
+            block_lines = textwrap.wrap(title.upper(), width=max(1, cols)) or ['']
+    else:
+        block_lines = [title.upper()]
+
+    artist_line = artist.strip()
+    if artist_line:
+        if len(artist_line) > cols:
+            artist_line = artist_line[:cols]
+        block_lines = block_lines + ['', artist_line]
+
+    return _center_block(block_lines, cols, rows)
 
 
 def render_simple_text(text: str, centered: bool = True) -> str:
@@ -233,3 +265,18 @@ def display_waiting(clear: bool = True):
         clear: Force a full clear before painting
     """
     _paint(render_waiting(), clear)
+
+
+def display_now_playing(artist: str, title: str, font_data: dict = None):
+    """
+    Display the now-playing card (track title + artist).
+
+    Forces a full clear so the card cleanly replaces whatever lyrics were on
+    screen for the previous track.
+
+    Args:
+        artist: Artist name shown beneath the title
+        title: Track title shown in block letters
+        font_data: Font to use for block letters
+    """
+    _paint(render_now_playing(artist, title, font_data), clear=True)

@@ -3,11 +3,27 @@ Media player integration using playerctl
 Handles communication with media players via MPRIS
 """
 import subprocess
+import time
+from collections import namedtuple
 from pathlib import Path
 from typing import Optional, Tuple
 
 
 PLAYER_NAME = 'spotify'
+
+
+# A single atomic snapshot of the player, read in one playerctl call.
+# ``sampled_at`` is the monotonic-clock midpoint of that call, so the display
+# loop can compensate for query latency and stay frame-accurate.
+PlayerState = namedtuple(
+    'PlayerState',
+    ['status', 'position', 'artist', 'title', 'album', 'duration', 'sampled_at'],
+)
+
+_STATE_FORMAT = (
+    '{{status}}|||{{position}}|||{{artist}}|||{{title}}|||'
+    '{{album}}|||{{mpris:length}}'
+)
 
 
 def _run_playerctl(args: list) -> subprocess.CompletedProcess:
@@ -17,6 +33,59 @@ def _run_playerctl(args: list) -> subprocess.CompletedProcess:
         cmd.extend(['--player', PLAYER_NAME])
     cmd.extend(args)
     return subprocess.run(cmd, capture_output=True, text=True, timeout=0.5)
+
+
+def get_state() -> Optional[PlayerState]:
+    """Read the player's full state in a single playerctl call.
+
+    Collapsing status, position and metadata into one subprocess (instead of
+    the three separate calls used before) cuts per-tick overhead ~3x and —
+    crucially for clean track switches — samples the position and the title
+    from the *same* MPRIS snapshot, so a song change can no longer race a stale
+    position left over from the previous track.
+
+    In ``metadata --format`` playerctl reports position/length in microseconds,
+    so both are converted to seconds. Returns None when nothing is playing or
+    the output can't be parsed.
+    """
+    try:
+        t0 = time.monotonic()
+        result = _run_playerctl(['metadata', '--format', _STATE_FORMAT])
+        t1 = time.monotonic()
+    except Exception:
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    parts = result.stdout.strip().split('|||')
+    if len(parts) != 6:
+        return None
+
+    status, pos_us, artist, title, album, length_us = parts
+
+    def _to_seconds(value: str) -> Optional[float]:
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            return float(value) / 1_000_000
+        except ValueError:
+            return None
+
+    position = _to_seconds(pos_us)
+    if position is None or not title:
+        return None
+
+    return PlayerState(
+        status=status or None,
+        position=position,
+        artist=artist,
+        title=title,
+        album=album or None,
+        duration=_to_seconds(length_us),
+        sampled_at=(t0 + t1) / 2,
+    )
 
 
 def get_position() -> Optional[float]:
