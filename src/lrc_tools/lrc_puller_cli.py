@@ -100,7 +100,7 @@ def main():
         return 1
 
     print(f"\n{'='*60}")
-    print(f"LRC PULLER")
+    print("LRC PULLER")
     print(f"{'='*60}")
     print(f"Audio dir:     {audio_dir}")
     print(f"Output dir:    {output_dir}")
@@ -213,7 +213,7 @@ def main():
             print(f"  [{i}/{len(found_results)}] {result['file']}: {status}")
 
     print(f"\n{'='*60}")
-    print(f"Done!")
+    print("Done!")
     print(f"  ✓ Saved:   {tally['success']}")
     if sources.get('lrclib'):
         print(f"      lrclib:       {sources['lrclib']}")

@@ -80,7 +80,7 @@ def main():
         return 0
 
     print(f"\n{'='*60}")
-    print(f"LRC PROCESSOR")
+    print("LRC PROCESSOR")
     print(f"{'='*60}")
     print(f"Input dir:     {lrc_dir}")
     print(f"Output dir:    {output_dir}")
@@ -97,7 +97,6 @@ def main():
 
     success = 0
     skipped = 0
-    errors = 0
 
     for lrc_path in lrc_files:
         result = process_lrc_file(
@@ -121,7 +120,7 @@ def main():
             skipped += 1
 
     print(f"\n{'='*60}")
-    print(f"Done!")
+    print("Done!")
     print(f"  ✓ Processed: {success}")
     print(f"  - Skipped:   {skipped}")
     print(f"\nOutput: {output_dir}")

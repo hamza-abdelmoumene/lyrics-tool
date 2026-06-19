@@ -1,5 +1,9 @@
 # lrc-tools
 
+[![CI](https://github.com/hamza-abdelmoumene/lyrics-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/hamza-abdelmoumene/lyrics-tool/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+
 Terminal lyrics suite: fetch synced lyrics, process them into phrase- or
 word-level timing, and render them live in the terminal as block letters,
 synchronized to whatever your media player is playing (via `playerctl`/MPRIS).
@@ -12,11 +16,11 @@ playing, or pin it with `--player`.
 
 | Feature & Description | Visual Preview |
 | :--- | :--- |
-| **Terminal Lyrics Visualizer** <br><br> The core visualizer rendering block-letter lyrics in the terminal. Features custom fonts, dynamic resizing, and real-time player synchronization. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lrc-tools/main/assets/image-preview.gif" width="450" alt="Terminal Lyric Visualizer" /> |
-| **Phrase-Level Playback** <br><br> Seamlessly tracks playing songs line-by-line, matching vocal delivery exactly. Uses a custom timing offset to eliminate player lag. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lrc-tools/main/assets/song-phrase-preview.gif" width="450" alt="Phrase-level lyric rendering & visualizer" /> |
-| **Smooth Glitch Transitions** <br><br> A high-performance scrambler effect that triggers on track change, rendering a scrambled/glitched text banner before resolving into the album info card. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lrc-tools/main/assets/switching-preview.gif" width="450" alt="Smooth track switching glitch & banner" /> |
-| **Dynamic Color Tinting** <br><br> Extracts the dominant vibrant color from the album artwork, adapting the terminal background and lyric colors to fit the song's aesthetic. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lrc-tools/main/assets/colors-preview.png" width="450" alt="Dynamic cover-art color-tinted theme" /> |
-| **Animated Ad-Break Screen** <br><br> Automatically detects when Spotify or local players play an advertisement, displaying an animated idle card and resuming lyrics immediately on the next song. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lrc-tools/main/assets/ads-preview.gif" width="450" alt="Animated ad break screen" /> |
+| **Terminal Lyrics Visualizer** <br><br> The core visualizer rendering block-letter lyrics in the terminal. Features custom fonts, dynamic resizing, and real-time player synchronization. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/image-preview.gif" width="450" alt="Terminal Lyric Visualizer" /> |
+| **Phrase-Level Playback** <br><br> Seamlessly tracks playing songs line-by-line, matching vocal delivery exactly. Uses a custom timing offset to eliminate player lag. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/song-phrase-preview.gif" width="450" alt="Phrase-level lyric rendering & visualizer" /> |
+| **Smooth Glitch Transitions** <br><br> A high-performance scrambler effect that triggers on track change, rendering a scrambled/glitched text banner before resolving into the album info card. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/switching-preview.gif" width="450" alt="Smooth track switching glitch & banner" /> |
+| **Dynamic Color Tinting** <br><br> Extracts the dominant vibrant color from the album artwork, adapting the terminal background and lyric colors to fit the song's aesthetic. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/colors-preview.png" width="450" alt="Dynamic cover-art color-tinted theme" /> |
+| **Animated Ad-Break Screen** <br><br> Automatically detects when Spotify or local players play an advertisement, displaying an animated idle card and resuming lyrics immediately on the next song. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/ads-preview.gif" width="450" alt="Animated ad break screen" /> |
 
 ## Commands
 

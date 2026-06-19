@@ -72,7 +72,8 @@ class TestIdleScreens(unittest.TestCase):
 
     def _paint_silently(self, fn, *args, **kwargs):
         """Call a display_* helper, capturing its terminal writes."""
-        import contextlib, io
+        import contextlib
+        import io
         vd._last_frame = None
         with contextlib.redirect_stdout(io.StringIO()):
             fn(*args, **kwargs)

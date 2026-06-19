@@ -28,7 +28,7 @@ dependencies = [
 [project.optional-dependencies]
 # Per-word onset detection (real timing instead of even spacing).
 onset = ["librosa>=0.10", "numpy>=1.23"]
-dev = ["pytest>=7"]
+dev = ["pytest>=7", "ruff>=0.5", "mypy>=1.8"]
 
 [project.scripts]
 lrc-vis = "lrc_tools.lrc_vis_cli:main"
@@ -36,9 +36,9 @@ lrc-fetch = "lrc_tools.lrc_puller_cli:main"
 lrc-processor = "lrc_tools.lrc_processor_cli:main"
 
 [project.urls]
-Homepage = "https://github.com/hamza-abdelmoumene/lrc-tools"
-Repository = "https://github.com/hamza-abdelmoumene/lrc-tools"
-Issues = "https://github.com/hamza-abdelmoumene/lrc-tools/issues"
+Homepage = "https://github.com/hamza-abdelmoumene/lyrics-tool"
+Repository = "https://github.com/hamza-abdelmoumene/lyrics-tool"
+Issues = "https://github.com/hamza-abdelmoumene/lyrics-tool/issues"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -48,3 +48,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 lrc_tools = ["custom_fonts.json", "config_example.yaml"]
+
+[tool.ruff.lint]
+# Default rules (E, F) plus ignore E741: single-letter `l` reads as "line"/"letter"
+# in the renderer loops and is clear in context.
+ignore = ["E741"]

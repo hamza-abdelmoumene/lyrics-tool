@@ -1,7 +1,7 @@
 import unittest
 from io import BytesIO
 
-from lrc_tools.cover import text_color, dominant_color, cover_colors, PIL_AVAILABLE
+from lrc_tools.cover import text_color, dominant_color, PIL_AVAILABLE
 from lrc_tools import visualizer_display as vd
 from lrc_tools.fonts import get_font
 

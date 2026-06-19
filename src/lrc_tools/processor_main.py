@@ -37,7 +37,6 @@ def detect_onset_positions(audio_path: Path, start_time: float, end_time: float,
     """
     try:
         import librosa
-        import numpy as np
 
         phrase_duration = end_time - start_time
         y, sr = librosa.load(str(audio_path), sr=22050, offset=start_time, duration=phrase_duration)
@@ -181,13 +180,13 @@ def process_lrc_file(
 
     if output_path.exists() and not overwrite:
         if verbose:
-            print(f"[Skip] Output already exists (use --overwrite)")
+            print("[Skip] Output already exists (use --overwrite)")
         return False
 
     lines = parse_lrc(lrc_path)
     if not lines:
         if verbose:
-            print(f"[Error] No valid lines in LRC")
+            print("[Error] No valid lines in LRC")
         return False
 
     if verbose:
@@ -208,7 +207,7 @@ def process_lrc_file(
                 print(f"[Estimate] Using: {duration:.2f}s")
     elif require_audio:
         if verbose:
-            print(f"[Error] No audio file found")
+            print("[Error] No audio file found")
         return False
     else:
         duration = lines[-1]['timestamp'] + 5.0

@@ -12,8 +12,8 @@ Thanks for your interest in contributing! Here's how to get started.
 
 ```bash
 # Clone the repo
-git clone https://github.com/hamza-abdelmoumene/lrc-tools.git
-cd lrc-tools
+git clone https://github.com/hamza-abdelmoumene/lyrics-tool.git
+cd lyrics-tool
 
 # Create a virtual environment
 python -m venv .venv
@@ -57,7 +57,7 @@ visualizer loop is driven with a stubbed player.
 ## Reporting Issues
 
 Open an issue on
-[GitHub](https://github.com/hamza-abdelmoumene/lrc-tools/issues) with:
+[GitHub](https://github.com/hamza-abdelmoumene/lyrics-tool/issues) with:
 
 - Steps to reproduce
 - Expected vs actual behaviour

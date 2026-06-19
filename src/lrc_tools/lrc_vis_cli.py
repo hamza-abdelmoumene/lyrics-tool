@@ -82,10 +82,10 @@ def main():
 
     font_data = get_font(args.font)
 
-    print(f"Starting LRC visualizer...")
+    print("Starting LRC visualizer...")
     print(f"LRC directory: {lrc_dir}")
     print(f"Font: {args.font}")
-    print(f"Press Ctrl+C to exit")
+    print("Press Ctrl+C to exit")
     print()
 
     try:
