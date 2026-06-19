@@ -18,6 +18,16 @@ _NOTE_SGR = '\033[38;5;240m'
 # shading + symbols reads as digital corruption without breaking column width.
 _GLITCH_GLYPHS = '▓▒░█▌▐#@%&$*!?/\\|=+<>'
 
+# Braille spinner cycled by the waiting / searching screens. Every glyph is a
+# single cell wide, so the centered frame never shifts as it spins.
+_SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+
+# Bored faces the ad-break screen cycles through (held a few ticks each), with a
+# drifting snooze trail beside them — turns a static card into a little "waiting
+# it out" loop. All glyphs are narrow BMP characters so column width is stable.
+_AD_FACES = ['( -_- )', '( ¬_¬ )', '( ˘_˘ )', '( =_= )', '( ·_· )']
+_AD_SNOOZE = ['z   ', 'zZ  ', 'zZz ', ' zZz', '  zZ', '   z']
+
 
 # Diff-render state: skip redraws when the frame is unchanged, and cache
 # expensive block-letter renders keyed by (text, terminal-size).
@@ -343,6 +353,20 @@ def _compose_lyric(frame: str, notes, color: Optional[RGB]) -> str:
     return '\n'.join(out_lines)
 
 
+def _render_status(lines: List[str], notes=None, color: Optional[RGB] = None) -> str:
+    """Center a stack of plain text lines into the terminal, with notes/colour.
+
+    Shared by the ambient idle screens (waiting, searching, no-lyrics): each is
+    just a few centered lines drifting over the same music notes as the lyrics,
+    so the view never goes dead while we wait on the player or the network.
+    """
+    cols, rows = get_terminal_size()
+    frame = _center_block(lines, cols, rows)
+    if notes or color is not None:
+        frame = _compose_lyric(frame, notes, color)
+    return frame
+
+
 def render_simple_text(text: str, centered: bool = True) -> str:
     """
     Render text in simple format (no block letters).
@@ -375,11 +399,50 @@ def render_simple_text(text: str, centered: bool = True) -> str:
 def render_waiting() -> str:
     """
     Render waiting/loading indicator.
-    
+
     Returns:
         Rendered waiting text
     """
     return render_simple_text("•••", centered=True)
+
+
+def display_searching(
+    title: str,
+    notes=None,
+    color: Optional[RGB] = None,
+    phase: int = 0,
+):
+    """Animated 'finding lyrics' screen shown while a track's lyrics download.
+
+    A braille spinner over the song title, drifting on the ambient notes — keeps
+    the view alive (and responsive to track switches) instead of freezing on the
+    title card while the network call runs off-thread.
+    """
+    spin = _SPINNER[phase % len(_SPINNER)]
+    lines = ['', f'{spin}  finding lyrics  {spin}', '', (title or '').strip(), '']
+    _paint(_render_status(lines, notes, color), clear=False)
+
+
+def display_no_lyrics(
+    title: str,
+    notes=None,
+    color: Optional[RGB] = None,
+):
+    """Graceful idle screen for a track we couldn't find synced lyrics for.
+
+    Replaces the old behaviour of freezing on the title card forever: the notes
+    keep drifting and the loop keeps watching for the next track, so the app
+    never *looks* stuck just because one song has no lyrics.
+    """
+    lines = [
+        '♪   ·   ♫   ·   ♩',
+        '',
+        'no synced lyrics for',
+        (title or '').strip(),
+        '',
+        'still listening — switch track anytime',
+    ]
+    _paint(_render_status(lines, notes, color), clear=False)
 
 
 def _paint(frame: str, clear: bool):
@@ -422,14 +485,18 @@ def display_text(text: str, use_block_letters: bool = True, font_data: dict = No
     _paint(frame, clear)
 
 
-def display_waiting(clear: bool = True):
+def display_waiting(notes=None, phase: int = 0, clear: bool = False):
     """
-    Display waiting indicator.
+    Display the 'waiting for a player' screen (animated spinner + notes).
 
     Args:
+        notes: Iterable of (row, col, glyph) background notes, or None
+        phase: Animation tick (advance once per call to spin the indicator)
         clear: Force a full clear before painting
     """
-    _paint(render_waiting(), clear)
+    spin = _SPINNER[phase % len(_SPINNER)]
+    lines = [spin, '', 'waiting for a player', '', 'play something to begin']
+    _paint(_render_status(lines, notes, None), clear)
 
 
 def display_now_playing(
@@ -491,8 +558,13 @@ def display_now_playing_glitch(
     _paint(frame, clear=False)
 
 
-def render_ad_screen(font_data: dict = None) -> str:
-    """Render the 'ad break' screen: 'AD' in block letters over a bored face."""
+def render_ad_screen(font_data: dict = None, phase: int = 0) -> str:
+    """Render the 'ad break' screen: 'AD' in block letters over a bored face.
+
+    ``phase`` animates the card: the bored face changes every few ticks and a
+    snooze trail (``z`` → ``zZz`` → drifting off) cycles beside it, so the wait
+    reads as "dozing through the ad" rather than a frozen frame.
+    """
     cols, rows = get_terminal_size()
     if font_data:
         block, max_width = _pack_block_lines('AD', font_data, cols)
@@ -500,15 +572,27 @@ def render_ad_screen(font_data: dict = None) -> str:
             block = ['AD']
     else:
         block = ['AD']
-    lines = block + ['', '( ¬_¬ )  …zZ', '', 'ad break — hang tight']
+    face = _AD_FACES[(phase // 4) % len(_AD_FACES)]
+    snooze = _AD_SNOOZE[phase % len(_AD_SNOOZE)]
+    lines = block + ['', f'{face}   {snooze}', '', 'ad break — back to the music soon']
     return _center_block(lines, cols, rows)
 
 
-def display_ad(font_data: dict = None, color: Optional[RGB] = None, clear: bool = False):
-    """Show the bored 'ad break' screen while a Spotify advert is playing."""
-    frame = render_ad_screen(font_data)
-    if color is not None:
-        frame = _compose_lyric(frame, None, color)
+def display_ad(
+    font_data: dict = None,
+    phase: int = 0,
+    notes=None,
+    color: Optional[RGB] = None,
+    clear: bool = False,
+):
+    """Show the animated bored 'ad break' screen while a Spotify advert plays.
+
+    Advance ``phase`` once per call to animate the bored face and snooze trail;
+    ``notes`` drift behind it just like on the lyric view.
+    """
+    frame = render_ad_screen(font_data, phase)
+    if notes or color is not None:
+        frame = _compose_lyric(frame, notes, color)
     _paint(frame, clear)
 
 

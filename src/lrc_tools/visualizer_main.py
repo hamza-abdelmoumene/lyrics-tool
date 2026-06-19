@@ -222,7 +222,7 @@ def run_visualizer(
     sync_offset: float = 0.0,
     cover_color: bool = True,
     notes: bool = True,
-    banner_hold: float = 0.8,
+    banner_hold: float = 1.5,
 ):
     """Run the LRC visualizer main loop.
 
@@ -241,7 +241,7 @@ def run_visualizer(
     from .visualizer_player import get_state, get_audio_file_info, get_art_url, is_ad
     from .visualizer_display import (
         display_lyrics, display_waiting, display_now_playing,
-        display_now_playing_glitch, display_ad,
+        display_now_playing_glitch, display_ad, display_searching, display_no_lyrics,
         get_terminal_size, hide_cursor, show_cursor, clear_screen,
     )
     from .parser import parse_lrc_simple
@@ -257,10 +257,11 @@ def run_visualizer(
     note_field = NoteField() if notes else None
     NOTE_DT = 0.12
 
-    # Total time the now-playing card stays up (glitch burst included) before
-    # lyrics take over. Kept short so the words show up quickly; they re-anchor
-    # to live position when they do, so there's no late/early drift. Floored so
-    # the glitch still resolves cleanly even if a tiny value is passed.
+    # How long the *settled* now-playing card stays up before lyrics take over.
+    # Timed from after the glitch resolves (see below), so the clean title is
+    # always visible for this long regardless of how slow the cover/lyric
+    # lookups are — that's what stops the card from flashing past. Floored so a
+    # tiny value still shows a readable title.
     BANNER_HOLD = max(0.45, banner_hold)
 
     def _resolve_colors():
@@ -320,96 +321,198 @@ def run_visualizer(
         # Album-cover accent the current track's lyrics are painted in (None =
         # default terminal colour, e.g. cover_color off or art/Pillow missing).
         lyric_color = None
-        color_holder = None  # off-thread cover-colour result for the current track
+        color_holder = None   # off-thread cover-colour result for the current track
+        fetch_holder = None   # off-thread on-the-fly lyric fetch for the current track
+        steady_until = 0.0    # monotonic instant the settled title card may hand off
+        idle_phase = 0        # animation tick for the waiting / ad / searching screens
+
+        def _notes_now():
+            """Current ambient-note positions for an idle screen, or None."""
+            if note_field is None:
+                return None
+            cols, rows = get_terminal_size()
+            return note_field.positions(cols, rows, time.monotonic())
+
+        def _pick_lyric_color():
+            """Adopt the cover accent the instant the off-thread fetch lands."""
+            nonlocal lyric_color
+            if lyric_color is None and color_holder is not None and color_holder['done']:
+                if color_holder['lyric'] is not None:
+                    lyric_color = color_holder['lyric']
+
+        def _start_bg_fetch(artist, title):
+            """Kick the on-the-fly lyric fetch onto a daemon thread.
+
+            The network round-trip (LRCLIB + fallbacks) can take several seconds;
+            running it inline froze the display and swallowed track switches, so
+            it runs off-thread and the loop polls ``holder['done']`` instead.
+            """
+            holder = {'title': title, 'done': False, 'lrc': None}
+
+            def work():
+                try:
+                    holder['lrc'] = fetch_lyrics_on_the_fly(
+                        artist, title, lrc_dir, is_wlrc=is_wlrc)
+                except Exception:
+                    holder['lrc'] = None
+                finally:
+                    holder['done'] = True
+
+            threading.Thread(target=work, daemon=True).start()
+            return holder
+
+        def _load_lines(artist, title, fetched=None):
+            """Resolve playable (timestamp, text) lines for the track, or None.
+
+            Fast and filesystem-only: a local lookup (with the in-memory
+            phrase→word fallback for word mode), or a path already produced by
+            the background fetch. Never touches the network itself.
+            """
+            audio_file = get_audio_file_info()
+            lookup = audio_file if audio_file else Path(title)
+            lrc = fetched or find_lrc_for_audio(
+                lookup, lrc_dir, artist, title, is_wlrc=is_wlrc)
+
+            # WLRC fallback: derive word timing in-memory from a phrase-level .lrc
+            # so word mode works offline for any cached song.
+            if not lrc and is_wlrc and not fetched:
+                phrase_lrc = find_lrc_for_audio(
+                    lookup, lrc_dir, artist, title, is_wlrc=False)
+                if phrase_lrc:
+                    from .parser import parse_lrc
+                    from .processor_main import phrases_to_words
+                    words = phrases_to_words(parse_lrc(phrase_lrc))
+                    return [(w['timestamp'], w['text']) for w in words] or None
+
+            if not lrc:
+                return None
+            return parse_lrc_simple(lrc) or None
+
+        def _track_changed(title):
+            """True once the live player has moved off ``title`` (or to an ad)."""
+            snap = sync_data.latest
+            if snap is None:
+                return False
+            return is_ad(snap) or bool(snap.title and snap.title != title)
+
+        def _hold_banner(title):
+            """Keep the settled title card up for its full window.
+
+            Returns False if the user skips to another track mid-hold (so the
+            outer loop re-announces), True once the hold elapses. Recolours the
+            card via the lyric accent if the cover lands while it's up.
+            """
+            while time.monotonic() < steady_until and sync_data.running:
+                if _track_changed(title):
+                    return False
+                _pick_lyric_color()
+                time.sleep(0.05)
+            return True
+
+        def _searching(title):
+            """Wait (responsively) for the background fetch.
+
+            Holds the title card until ``steady_until``, then animates a spinner.
+            Returns 'fetched' when the fetch lands, 'changed' on a track switch,
+            or 'stop' when shutting down — so the loop never blocks on the
+            network or freezes on the card.
+            """
+            nonlocal idle_phase
+            while sync_data.running:
+                if _track_changed(title):
+                    return 'changed'
+                if fetch_holder is not None and fetch_holder['done']:
+                    return 'fetched'
+                _pick_lyric_color()
+                if time.monotonic() >= steady_until:  # card hold done → animate
+                    display_searching(title, _notes_now(), lyric_color, idle_phase)
+                    idle_phase += 1
+                time.sleep(0.1)
+            return 'stop'
+
+        def _idle_no_lyrics(title):
+            """Drift the 'no synced lyrics' screen until the track changes.
+
+            Replaces freezing on the title card forever when a song has no
+            lyrics — the loop stays alive and re-announces the next track.
+            """
+            nonlocal idle_phase
+            while sync_data.running:
+                if _track_changed(title):
+                    return
+                _pick_lyric_color()
+                display_no_lyrics(title, _notes_now(), lyric_color)
+                idle_phase += 1
+                time.sleep(0.12)
 
         while sync_data.running:
             state = get_state()
             if state is None:
-                time.sleep(0.3)
-                continue
-
-            # Spotify ad break → bored screen, no lyric lookup. Reset the title
-            # so the real track re-announces with its glitch when the ad ends.
-            if is_ad(state):
-                display_ad(font_data)
+                # No active player — gently animate a waiting screen.
+                display_waiting(_notes_now(), idle_phase)
+                idle_phase += 1
                 last_title = None
                 sync_data.current_title = None
                 lyric_color = None
-                time.sleep(0.3)
+                fetch_holder = None
+                time.sleep(0.2)
+                continue
+
+            # Spotify ad break → animated bored screen, no lyric lookup. Reset the
+            # title so the real track re-announces with its glitch when it ends.
+            if is_ad(state):
+                display_ad(font_data, idle_phase, _notes_now())
+                idle_phase += 1
+                last_title = None
+                sync_data.current_title = None
+                lyric_color = None
+                fetch_holder = None
+                time.sleep(0.2)
                 continue
 
             artist, title = state.artist, state.title
 
-            # New track → announce it with a glitch burst before anything else.
-            # The album-cover colour is resolved off-thread (download never
-            # blocks the announce); the card is revealed in colour once it lands,
-            # and a soft accent of it tints the lyrics.
-            banner_until = 0.0
+            # New track → announce it with a glitch burst. The album-cover colour
+            # resolves off-thread (the download never blocks the announce); the
+            # card reveals in whatever colour has landed, and a soft accent of it
+            # tints the lyrics. ``steady_until`` is set *after* the glitch settles,
+            # so the clean card is guaranteed visible for the full hold no matter
+            # how slow the cover/lyric lookups are.
             if title != last_title:
                 last_title = title
-                if cover_color:
-                    color_holder, _ = _resolve_colors()
-                else:
-                    color_holder = None
-                # Time the window from here so the glitch counts toward it.
-                banner_until = time.monotonic() + BANNER_HOLD
-                display_now_playing_glitch(artist, title, font_data)
-
-                # Non-blocking: reveal the card in whatever colour has resolved
-                # so far (often already done after the glitch, instant on the
-                # cached-cover replay path). We never wait on the download here —
-                # the lyrics pick the colour up later if it lands after the card.
+                sync_data.current_title = None
+                fetch_holder = None
+                color_holder = _resolve_colors()[0] if cover_color else None
                 lyric_color = color_holder['lyric'] if color_holder else None
+                display_now_playing_glitch(artist, title, font_data)
                 display_now_playing(
                     artist, title, font_data,
                     bg=color_holder['card_bg'] if color_holder else None,
                     fg=color_holder['card_fg'] if color_holder else None,
                 )
+                steady_until = time.monotonic() + BANNER_HOLD
 
-            audio_file = get_audio_file_info()
-            lookup = audio_file if audio_file else Path(title)
-            lrc = find_lrc_for_audio(lookup, lrc_dir, artist, title, is_wlrc=is_wlrc)
+            # Resolve lyrics. Local/derived first (instant); only the network
+            # round-trip runs off-thread so the loop never blocks on it.
+            lines = _load_lines(artist, title)
+            if lines is None:
+                if fetch_holder is None or fetch_holder['title'] != title:
+                    fetch_holder = _start_bg_fetch(artist, title)
+                outcome = _searching(title)
+                if outcome != 'fetched':
+                    continue  # track changed or shutting down → re-loop
+                lines = _load_lines(artist, title, fetched=fetch_holder['lrc'])
 
-            # WLRC fallback: if no word-level file exists, derive word timing
-            # in-memory from an existing phrase-level .lrc. Avoids a network
-            # round-trip and makes word mode work offline for any cached song.
-            derive_words = False
-            if not lrc and is_wlrc:
-                phrase_lrc = find_lrc_for_audio(lookup, lrc_dir, artist, title, is_wlrc=False)
-                if phrase_lrc:
-                    lrc = phrase_lrc
-                    derive_words = True
-
-            if not lrc:
-                # Last resort: fetch on-the-fly
-                lrc = fetch_lyrics_on_the_fly(artist, title, lrc_dir, is_wlrc=is_wlrc)
-
-            if not lrc:
-                # No lyrics — leave the now-playing card up and retry shortly.
-                time.sleep(1)
+            if lines is None:
+                # Fetch finished but found nothing → hold the card, then idle
+                # gracefully instead of freezing on the title forever.
+                if not _hold_banner(title):
+                    continue
+                _idle_no_lyrics(title)
                 continue
 
-            if derive_words:
-                from .parser import parse_lrc
-                from .processor_main import phrases_to_words
-                words = phrases_to_words(parse_lrc(lrc))
-                lines = [(w['timestamp'], w['text']) for w in words]
-            else:
-                lines = parse_lrc_simple(lrc)
-            if not lines:
-                time.sleep(1)
-                continue
-
-            # Hold the card for the rest of BANNER_HOLD, but bail early if the
-            # user skips again (monitor keeps sync_data.latest fresh).
-            skipped = False
-            while time.monotonic() < banner_until and sync_data.running:
-                time.sleep(0.1)
-                snap = sync_data.latest
-                if snap is not None and snap.title != title:
-                    skipped = True
-                    break
-            if skipped:
+            # Hold the settled card for its full window (skip if the user moves on).
+            if not _hold_banner(title):
                 continue
 
             # Anchor to a fresh, precise sample for the first painted line.

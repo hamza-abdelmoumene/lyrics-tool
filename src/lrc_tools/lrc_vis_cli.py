@@ -35,9 +35,10 @@ def main():
                         help='MPRIS player to follow (e.g. spotify, mpv, vlc). '
                              'Default: auto-detect the active player, so both '
                              'Spotify and local players work out of the box')
-    parser.add_argument('--banner-hold', type=float, default=0.8,
-                        help='Seconds the song-title card stays up on a track '
-                             'switch before lyrics take over (default: 0.8)')
+    parser.add_argument('--banner-hold', type=float, default=1.5,
+                        help='Seconds the settled song-title card stays up on a '
+                             'track switch before lyrics take over, timed after '
+                             'the glitch resolves (default: 1.5)')
     parser.add_argument('--config', type=Path,
                         help='Path to config.yaml')
 

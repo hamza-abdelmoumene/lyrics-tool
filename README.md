@@ -24,7 +24,14 @@ Three commands:
   Tune further with `--offset` (positive = earlier).
 - **Glitch track announce** — every track switch opens with a short glitch burst
   (band tears, scrambling letters, chromatic flicker) that resolves into the
-  song-name card, then hands off to the lyrics ~1.2s later.
+  song-name card. The settled card is held for a guaranteed window (`--banner-hold`,
+  default 1.5s, timed *after* the glitch) so it never flashes past, then hands
+  off to the lyrics.
+- **Never blocks on the network** — lyrics for the playing track are fetched on
+  the fly in the background, so the display stays responsive and track switches
+  register instantly even while a download is in flight. While it searches you
+  get an animated *finding lyrics* screen; if a song genuinely has none, it
+  settles into a calm *no synced lyrics* idle screen instead of freezing.
 - **Cover-tinted UI** — the title card paints the terminal in the album cover's
   dominant colour (saturated, with text auto-set dark on light covers / light on
   dark ones), and the lyrics are tinted with a softer, desaturated accent of the
@@ -32,10 +39,11 @@ Three commands:
   `--no-cover-color`.)
 - **Auto-follow any player** — works with Spotify and local MPRIS players out of
   the box; auto-detects the active one, or pin it with `--player spotify` / `mpv`.
-- **Ad break screen** — when Spotify plays an advert, the lyrics swap to a bored
-  `( ¬_¬ )  …zZ` *ad break* card, then snap back to the next real track.
+- **Ad break screen** — when Spotify plays an advert, the lyrics swap to an
+  animated *ad break* card — a bored face that cycles with a drifting snooze
+  trail over the music notes — then snaps back to the next real track.
 - **Floating music notes** — ambient notes drift up the screen behind the
-  lyrics. Disable with `--no-notes`.
+  lyrics, the idle screens, and the ad card. Disable with `--no-notes`.
 - **Responsive renderer** — block letters wrap across rows to fit the terminal,
   and fall back to plain wrapped text when the window is too small. Resizes live.
 - **Diff rendering** — repaints only when the line, notes, or terminal size
@@ -98,7 +106,9 @@ lrc-vis --lrc-dir ... --player spotify   # pin to one player (e.g. spotify, mpv,
 
 Useful flags: `--player <name>` to pin a player, `--no-cover-color` /
 `--no-notes` to strip effects, `--offset <sec>` to nudge sync (positive =
-earlier). Lyrics for the playing track are fetched on the fly if not cached.
+earlier), `--banner-hold <sec>` to set how long the title card lingers (default
+1.5). Lyrics for the playing track are fetched on the fly (in the background) if
+not cached.
 
 Handy shell aliases:
 
