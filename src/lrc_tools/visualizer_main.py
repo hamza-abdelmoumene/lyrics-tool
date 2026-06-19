@@ -239,7 +239,7 @@ def run_visualizer(
     """
     from .visualizer_player import get_state, get_audio_file_info, get_art_url
     from .visualizer_display import (
-        display_lyrics, display_waiting, display_now_playing,
+        display_lyrics, display_waiting, display_now_playing_glitch,
         get_terminal_size, hide_cursor, show_cursor, clear_screen,
     )
     from .parser import parse_lrc_simple
@@ -255,8 +255,10 @@ def run_visualizer(
     note_field = NoteField() if notes else None
     NOTE_DT = 0.12
 
-    # Minimum time the now-playing card stays up so the name is readable.
-    BANNER_HOLD = 1.5
+    # Minimum time the now-playing card stays up so the name is readable. The
+    # glitch burst plays at the front of this window; lyrics start in sync once
+    # it elapses (re-anchored to live position, so no late/early drift).
+    BANNER_HOLD = 3.5
 
     hide_cursor()
     clear_screen()
@@ -286,6 +288,9 @@ def run_visualizer(
 
     try:
         last_title = None
+        # Album-cover accent the current track's lyrics are painted in (None =
+        # default terminal colour, e.g. cover_color off or art/Pillow missing).
+        lyric_color = None
 
         while sync_data.running:
             state = get_state()
@@ -295,8 +300,9 @@ def run_visualizer(
 
             artist, title = state.artist, state.title
 
-            # New track → announce it before anything else, tinted with the
-            # album cover's colour (looked up once per URL, then cached).
+            # New track → announce it with a glitch burst before anything else,
+            # tinted with the album cover's colour (looked up once per URL, then
+            # cached). The cover's accent is kept to paint this track's lyrics.
             banner_until = 0.0
             if title != last_title:
                 last_title = title
@@ -305,8 +311,10 @@ def run_visualizer(
                     colors = cover_colors(get_art_url())
                     if colors:
                         bg, fg = colors
-                display_now_playing(artist, title, font_data, bg=bg, fg=fg)
+                lyric_color = bg  # saturated dominant reads well on the lyrics
+                # Time the window from here so the ~0.5s glitch counts toward it.
                 banner_until = time.monotonic() + BANNER_HOLD
+                display_now_playing_glitch(artist, title, font_data, bg=bg, fg=fg)
 
             audio_file = get_audio_file_info()
             lookup = audio_file if audio_file else Path(title)
@@ -398,7 +406,8 @@ def run_visualizer(
                     if note_field is not None:
                         cols, rows = get_terminal_size()
                         note_positions = note_field.positions(cols, rows, tq * NOTE_DT)
-                    display_lyrics(text, font_data=font_data, notes=note_positions)
+                    display_lyrics(text, font_data=font_data, notes=note_positions,
+                                   color=lyric_color)
 
                 # Spin slower while paused — nothing advances, so save CPU.
                 time.sleep(0.3 if sync_data.paused else refresh_rate)

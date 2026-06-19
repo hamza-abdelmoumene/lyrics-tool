@@ -4,6 +4,8 @@ Handles rendering text in various styles to terminal
 """
 import sys
 import os
+import time
+import random
 from typing import List, Optional, Tuple
 
 RGB = Tuple[int, int, int]
@@ -11,6 +13,10 @@ _RESET = '\033[0m'
 # Dim, neutral grey for the ambient notes so they read as background, never
 # competing with the lyric. 256-colour code keeps it terminal-friendly.
 _NOTE_SGR = '\033[38;5;240m'
+
+# Glyphs the track-switch glitch burst scrambles letters into. A mix of block
+# shading + symbols reads as digital corruption without breaking column width.
+_GLITCH_GLYPHS = '▓▒░█▌▐#@%&$*!?/\\|=+<>'
 
 
 # Diff-render state: skip redraws when the frame is unchanged, and cache
@@ -214,6 +220,83 @@ def _overlay_notes(frame: str, notes: List[Tuple[int, int, str]]) -> str:
     return '\n'.join(''.join(row) for row in grid)
 
 
+def _jitter_color(rgb: RGB, amount: float) -> RGB:
+    """Randomly nudge each channel by up to ``amount`` for a chromatic flicker."""
+    j = int(40 * amount)
+    if j <= 0:
+        return rgb
+    return tuple(max(0, min(255, c + random.randint(-j, j))) for c in rgb)
+
+
+def _glitch_frame(frame: str, cols: int, amount: float) -> str:
+    """Corrupt a frame for the track-switch glitch burst.
+
+    ``amount`` (1→0) scales how violent the corruption is: rows get random
+    horizontal slips and individual letters scramble into :data:`_GLITCH_GLYPHS`.
+    Every row is re-padded to exactly ``cols`` so the tint/overwrite stays aligned.
+    """
+    out: List[str] = []
+    for line in frame.split('\n'):
+        if random.random() < amount * 0.35:  # horizontal slice slip
+            shift = random.randint(-4, 4)
+            if shift > 0:
+                line = ' ' * shift + line
+            elif shift < 0:
+                line = line[-shift:]
+        if line.strip():
+            chars = list(line)
+            for i, c in enumerate(chars):
+                if c != ' ' and random.random() < amount * 0.3:
+                    chars[i] = random.choice(_GLITCH_GLYPHS)
+            line = ''.join(chars)
+        out.append(line.ljust(cols)[:cols])
+    return '\n'.join(out)
+
+
+def _compose_lyric(frame: str, notes, color: Optional[RGB]) -> str:
+    """Paint a lyric frame: letters in ``color``, notes dim grey, spaces blank.
+
+    Does notes and text-colour in a single pass over the plain frame so neither
+    fights the other's escape codes — note glyphs only ever land on space cells,
+    and the colour run is closed before/after them. Visible column width is
+    preserved (each glyph/letter stays one cell wide).
+    """
+    note_map = {}
+    if notes:
+        for r, c, g in notes:
+            note_map[(r, c)] = g
+    color_sgr = None
+    if color is not None:
+        cr, cg, cb = color
+        color_sgr = f'\033[38;2;{cr};{cg};{cb}m'
+
+    out_lines: List[str] = []
+    for ri, row in enumerate(frame.split('\n')):
+        parts: List[str] = []
+        in_color = False
+        for ci, ch in enumerate(row):
+            note = note_map.get((ri, ci)) if note_map else None
+            if note is not None and ch == ' ':
+                if in_color:
+                    parts.append(_RESET)
+                    in_color = False
+                parts.append(f'{_NOTE_SGR}{note}{_RESET}')
+            elif ch != ' ' and color_sgr is not None:
+                if not in_color:
+                    parts.append(color_sgr)
+                    in_color = True
+                parts.append(ch)
+            else:
+                if in_color:
+                    parts.append(_RESET)
+                    in_color = False
+                parts.append(ch)
+        if in_color:
+            parts.append(_RESET)
+        out_lines.append(''.join(parts))
+    return '\n'.join(out_lines)
+
+
 def render_simple_text(text: str, centered: bool = True) -> str:
     """
     Render text in simple format (no block letters).
@@ -331,21 +414,60 @@ def display_now_playing(
     _paint(frame, clear=True)
 
 
-def display_lyrics(text: str, font_data: dict = None, notes=None, clear: bool = False):
+def display_now_playing_glitch(
+    artist: str,
+    title: str,
+    font_data: dict = None,
+    bg: Optional[RGB] = None,
+    fg: Optional[RGB] = None,
+    frames: int = 11,
+    frame_dt: float = 0.045,
+):
+    """Announce a track with a short glitch burst, then settle to the clean card.
+
+    Paints ``frames`` decaying-corruption frames (letters scrambling, rows
+    slipping, colour flickering) before resolving to the steady — optionally
+    cover-tinted — now-playing card. Blocks for roughly ``frames * frame_dt``
+    seconds (~0.5s); the caller holds the settled card for the rest of its
+    on-screen time. ``bg``/``fg`` tint exactly like :func:`display_now_playing`.
     """
-    Display a lyric line in the default terminal colours, with the ambient
-    music notes drifting behind it.
+    cols, _ = get_terminal_size()
+    base = render_now_playing(artist, title, font_data)
+    for k in range(frames):
+        amount = 1.0 - (k / max(1, frames))      # 1 → ~0 over the burst
+        g = _glitch_frame(base, cols, amount)
+        if bg is not None and fg is not None:
+            g = _tint_frame(g, _jitter_color(bg, amount), _jitter_color(fg, amount))
+        _paint(g, clear=(k == 0))                 # clear once, then repaint home
+        time.sleep(frame_dt)
+    frame = base
+    if bg is not None and fg is not None:
+        frame = _tint_frame(frame, bg, fg)
+    _paint(frame, clear=False)
+
+
+def display_lyrics(
+    text: str,
+    font_data: dict = None,
+    notes=None,
+    color: Optional[RGB] = None,
+    clear: bool = False,
+):
+    """
+    Display a lyric line with the ambient music notes drifting behind it.
 
     Args:
         text: Lyric line to display
         font_data: Font to use for block letters (plain centered text if None)
         notes: Iterable of (row, col, glyph) background notes, or None
+        color: Optional RGB to paint the lyric letters in (e.g. the album
+            cover's accent colour); notes stay dim grey regardless
         clear: Force a full clear before painting
     """
     if font_data:
         frame = render_block_text(text, font_data)
     else:
         frame = render_simple_text(text)
-    if notes:
-        frame = _overlay_notes(frame, notes)
+    if notes or color is not None:
+        frame = _compose_lyric(frame, notes, color)
     _paint(frame, clear)
