@@ -9,7 +9,15 @@ from typing import Optional
 
 
 class SyncData:
-    """Shared synchronization data for visualizer"""
+    """Shared state between the monitor thread and the display loop.
+
+    Deliberately lock-free: every field is a single word (a flag, a string, or
+    an immutable PlayerState reference) written by one side and read by the
+    other, so under CPython's GIL each access is atomic. The only contended
+    flags (``should_resync``, ``paused``) are idempotent — the worst a race can
+    cause is one extra, harmless re-anchor — so a mutex would add risk (a lock
+    held across the render loop) for no correctness gain.
+    """
 
     def __init__(self):
         self.latest = None  # most recent PlayerState from the monitor thread

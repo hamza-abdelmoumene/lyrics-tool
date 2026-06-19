@@ -4,6 +4,7 @@ Handles metadata extraction, LRCLIB API search, and syncedlyrics fallback
 """
 import json
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
@@ -258,18 +259,34 @@ def _pick_lyrics(result: Dict, prefer_synced: bool = True) -> Optional[str]:
     return result.get('plainLyrics') or result.get('syncedLyrics')
 
 
-def search_syncedlyrics(artist: str, title: str) -> Optional[str]:
+def search_syncedlyrics(artist: str, title: str, timeout: float = 12.0) -> Optional[str]:
     """
     Fallback search using the syncedlyrics library (multi-source).
     Returns raw LRC string or None.
+
+    The library exposes no timeout of its own, so the call is run on a worker
+    thread and abandoned after ``timeout`` seconds. Without this a stalled
+    provider could hang the caller indefinitely — including the visualizer's
+    background fetch, leaving the "finding lyrics" screen spinning forever.
     """
     if not SYNCEDLYRICS_AVAILABLE:
         return None
-    try:
-        result = syncedlyrics_search(f"{artist} {title}", providers=['lrclib', 'netease'])
-        return result or None
-    except Exception:
-        return None
+
+    box: Dict[str, Optional[str]] = {'result': None}
+
+    def work():
+        try:
+            box['result'] = syncedlyrics_search(
+                f"{artist} {title}", providers=['lrclib', 'netease']) or None
+        except Exception:
+            box['result'] = None
+
+    th = threading.Thread(target=work, daemon=True)
+    th.start()
+    th.join(timeout)
+    # If it overran, the daemon thread is abandoned (harmless) and we report a
+    # miss; a late write to ``box`` after we return is never read.
+    return box['result']
 
 
 def search_song(

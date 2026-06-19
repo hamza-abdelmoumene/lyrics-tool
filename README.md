@@ -59,6 +59,26 @@ Three commands:
 - **Players:** Spotify (incl. ad detection) and any local MPRIS player — mpv, VLC,
   rhythmbox, etc. macOS/Windows are not supported (no `playerctl`/MPRIS).
 
+## Footprint
+
+It's light — it's a sleep-driven loop, not a busy renderer. The diff renderer
+only repaints when the lyric line, the notes, or the terminal size actually
+change, and playback position is extrapolated from the monotonic clock instead
+of polling the player every frame.
+
+Measured on Linux / CPython 3.14, one `lrc-vis` process during continuous
+playback (lyrics flipping + floating notes):
+
+| Metric | Idle / paused | 80×24 terminal | Large terminal (≈200×50) |
+| ------ | ------------- | -------------- | ------------------------ |
+| Memory (RSS) | ~30 MiB | ~33 MiB | ~33 MiB |
+| CPU | ~0% | ~1% of one core | ~3% of one core |
+
+CPU scales with terminal size (more cells → more floating notes) and with
+`--refresh-rate`; memory is flat (lyrics and cover colours are cached, not
+accumulated). `--no-notes` trims the steady-state CPU further. Numbers are
+approximate and hardware-dependent.
+
 ## Requirements
 
 - Python ≥ 3.9
@@ -133,8 +153,11 @@ pip install -e '.[dev]'
 python -m pytest            # or: python -m unittest discover -s tests
 ```
 
-The pure logic (parsing, phrase→word conversion, rendering) is covered by tests
-and runs without `playerctl`, audio, or network.
+Tests cover the pure logic (parsing, phrase→word conversion, rendering, the
+ambient note field) and the visualizer loop itself — driven with a stubbed
+player so it asserts track announces, graceful no-lyrics handling, and that a
+slow lyric fetch never blocks the display. Everything runs without `playerctl`,
+audio, or network.
 
 ## Credits
 
