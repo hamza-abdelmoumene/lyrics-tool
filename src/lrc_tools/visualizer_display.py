@@ -228,28 +228,74 @@ def _jitter_color(rgb: RGB, amount: float) -> RGB:
     return tuple(max(0, min(255, c + random.randint(-j, j))) for c in rgb)
 
 
+# Hot flicker colours the glitch flashes between for a chromatic-aberration feel.
+_GLITCH_HOT = [(255, 40, 90), (40, 220, 255), (255, 255, 255), (180, 60, 255)]
+
+
 def _glitch_frame(frame: str, cols: int, amount: float) -> str:
     """Corrupt a frame for the track-switch glitch burst.
 
-    ``amount`` (1→0) scales how violent the corruption is: rows get random
-    horizontal slips and individual letters scramble into :data:`_GLITCH_GLYPHS`.
+    ``amount`` (1→0) scales how violent the corruption is. Three layered effects:
+    horizontal *band tears* (contiguous row groups slip sideways), per-letter
+    *scramble* into :data:`_GLITCH_GLYPHS`, and occasional whole-row *dropouts*.
     Every row is re-padded to exactly ``cols`` so the tint/overwrite stays aligned.
     """
-    out: List[str] = []
-    for line in frame.split('\n'):
-        if random.random() < amount * 0.35:  # horizontal slice slip
-            shift = random.randint(-4, 4)
+    lines = frame.split('\n')
+    n = len(lines)
+
+    # Band tears: shift a few contiguous bands of rows by a chunky offset.
+    for _ in range(int(amount * 3) + 1):
+        if random.random() >= amount:
+            continue
+        h = random.randint(1, max(1, n // 4))
+        top = random.randint(0, max(0, n - h))
+        shift = random.randint(-10, 10)
+        for i in range(top, top + h):
+            ln = lines[i]
             if shift > 0:
-                line = ' ' * shift + line
+                ln = ' ' * shift + ln
             elif shift < 0:
-                line = line[-shift:]
+                ln = ln[-shift:]
+            lines[i] = ln
+
+    out: List[str] = []
+    for line in lines:
         if line.strip():
-            chars = list(line)
-            for i, c in enumerate(chars):
-                if c != ' ' and random.random() < amount * 0.3:
-                    chars[i] = random.choice(_GLITCH_GLYPHS)
-            line = ''.join(chars)
+            if random.random() < amount * 0.12:        # whole-row dropout
+                line = ''
+            else:                                       # per-letter scramble
+                chars = list(line)
+                for i, c in enumerate(chars):
+                    if c != ' ' and random.random() < amount * 0.32:
+                        chars[i] = random.choice(_GLITCH_GLYPHS)
+                line = ''.join(chars)
         out.append(line.ljust(cols)[:cols])
+    return '\n'.join(out)
+
+
+def _glitch_tint(frame: str, bg: Optional[RGB], fg: Optional[RGB], amount: float) -> str:
+    """Colour a corrupted glitch frame, flickering rows toward hot accent colours.
+
+    With a cover (``bg``/``fg`` set) each row is filled with the tinted background
+    and its text either jittered ``fg`` or, with probability scaling on
+    ``amount``, a hot flicker colour. Without a cover the text alone flickers on
+    the default background.
+    """
+    out: List[str] = []
+    for row in frame.split('\n'):
+        if random.random() < amount * 0.45:
+            fr, fgc, fb = random.choice(_GLITCH_HOT)
+        elif fg is not None:
+            fr, fgc, fb = _jitter_color(fg, amount)
+        else:
+            out.append(row)                            # no cover, no flicker: plain
+            continue
+        fg_sgr = f'\033[38;2;{fr};{fgc};{fb}m'
+        if bg is not None:
+            br, bgc, bb = _jitter_color(bg, amount * 0.5)
+            out.append(f'\033[48;2;{br};{bgc};{bb}m{fg_sgr}{row}{_RESET}')
+        else:
+            out.append(f'{fg_sgr}{row}{_RESET}')
     return '\n'.join(out)
 
 
@@ -420,24 +466,23 @@ def display_now_playing_glitch(
     font_data: dict = None,
     bg: Optional[RGB] = None,
     fg: Optional[RGB] = None,
-    frames: int = 11,
-    frame_dt: float = 0.045,
+    frames: int = 13,
+    frame_dt: float = 0.04,
 ):
     """Announce a track with a short glitch burst, then settle to the clean card.
 
-    Paints ``frames`` decaying-corruption frames (letters scrambling, rows
-    slipping, colour flickering) before resolving to the steady — optionally
-    cover-tinted — now-playing card. Blocks for roughly ``frames * frame_dt``
-    seconds (~0.5s); the caller holds the settled card for the rest of its
-    on-screen time. ``bg``/``fg`` tint exactly like :func:`display_now_playing`.
+    Paints ``frames`` decaying-corruption frames (band tears, letters scrambling,
+    hot colour flicker) before resolving to the steady — optionally cover-tinted —
+    now-playing card. Blocks for roughly ``frames * frame_dt`` seconds (~0.5s);
+    the caller holds the settled card for the rest of its on-screen time.
+    ``bg``/``fg`` tint exactly like :func:`display_now_playing`.
     """
     cols, _ = get_terminal_size()
     base = render_now_playing(artist, title, font_data)
     for k in range(frames):
         amount = 1.0 - (k / max(1, frames))      # 1 → ~0 over the burst
         g = _glitch_frame(base, cols, amount)
-        if bg is not None and fg is not None:
-            g = _tint_frame(g, _jitter_color(bg, amount), _jitter_color(fg, amount))
+        g = _glitch_tint(g, bg, fg, amount)
         _paint(g, clear=(k == 0))                 # clear once, then repaint home
         time.sleep(frame_dt)
     frame = base

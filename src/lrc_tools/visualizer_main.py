@@ -244,7 +244,7 @@ def run_visualizer(
     )
     from .parser import parse_lrc_simple
     from .audio import find_lrc_for_audio
-    from .cover import cover_colors
+    from .cover import cover_colors, lyric_accent
     from .effects import NoteField
 
     # Effective head-start: built-in buffer compensation + user offset.
@@ -255,10 +255,10 @@ def run_visualizer(
     note_field = NoteField() if notes else None
     NOTE_DT = 0.12
 
-    # Minimum time the now-playing card stays up so the name is readable. The
-    # glitch burst plays at the front of this window; lyrics start in sync once
-    # it elapses (re-anchored to live position, so no late/early drift).
-    BANNER_HOLD = 3.5
+    # Total time the now-playing card stays up (glitch burst included) before
+    # lyrics take over. Kept short so the words show up quickly; they re-anchor
+    # to live position when they do, so there's no late/early drift.
+    BANNER_HOLD = 2.0
 
     hide_cursor()
     clear_screen()
@@ -311,7 +311,9 @@ def run_visualizer(
                     colors = cover_colors(get_art_url())
                     if colors:
                         bg, fg = colors
-                lyric_color = bg  # saturated dominant reads well on the lyrics
+                # Brighten the dominant so lyrics stay legible on the terminal
+                # background even when the cover's accent is near-black.
+                lyric_color = lyric_accent(bg) if bg else None
                 # Time the window from here so the ~0.5s glitch counts toward it.
                 banner_until = time.monotonic() + BANNER_HOLD
                 display_now_playing_glitch(artist, title, font_data, bg=bg, fg=fg)

@@ -6,6 +6,7 @@ card can paint the terminal in that colour (with readable white/dark text).
 All lookups are cached by art URL, so re-announcing the same track — or
 flipping back to a previous one — never re-downloads or re-decodes the image.
 """
+import colorsys
 from io import BytesIO
 from typing import Optional, Tuple
 from urllib import request
@@ -31,6 +32,24 @@ def _luminance(rgb: RGB) -> float:
 def text_color(bg: RGB) -> RGB:
     """Pick a readable foreground for ``bg``: near-black on light, near-white on dark."""
     return (18, 18, 18) if _luminance(bg) > 150 else (240, 240, 240)
+
+
+def lyric_accent(rgb: RGB) -> RGB:
+    """Brighten a cover colour into one that pops as lyric text on a terminal.
+
+    The raw dominant colour can be near-black (dark navy covers) or washed out,
+    which is unreadable as text on the default background. Keeping its *hue* but
+    forcing a high value and a healthy saturation turns it into a vivid accent
+    that stays legible while still reading as "the album's colour".
+    """
+    r, g, b = (c / 255 for c in rgb)
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    if s < 0.12:  # near-greyscale cover: hue is meaningless, don't invent one
+        return (220, 220, 220)
+    s = max(s, 0.55)
+    v = max(v, 0.85)
+    r, g, b = colorsys.hsv_to_rgb(h, s, v)
+    return (round(r * 255), round(g * 255), round(b * 255))
 
 
 def _download(url: str, timeout: float = 4.0) -> Optional[bytes]:
