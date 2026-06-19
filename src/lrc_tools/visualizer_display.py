@@ -4,7 +4,13 @@ Handles rendering text in various styles to terminal
 """
 import sys
 import os
-from typing import List
+from typing import List, Optional, Tuple
+
+RGB = Tuple[int, int, int]
+_RESET = '\033[0m'
+# Dim, neutral grey for the ambient notes so they read as background, never
+# competing with the lyric. 256-colour code keeps it terminal-friendly.
+_NOTE_SGR = '\033[38;5;240m'
 
 
 # Diff-render state: skip redraws when the frame is unchanged, and cache
@@ -30,9 +36,9 @@ def get_terminal_size() -> tuple:
 
 
 def clear_screen():
-    """Clear the terminal screen"""
+    """Clear the terminal screen (and reset any lingering colour)."""
     global _last_frame
-    sys.stdout.write('\033[2J\033[H')
+    sys.stdout.write(_RESET + '\033[2J\033[H')
     sys.stdout.flush()
     _last_frame = None
 
@@ -180,6 +186,34 @@ def render_now_playing(artist: str, title: str, font_data: dict) -> str:
     return _center_block(block_lines, cols, rows)
 
 
+def _tint_frame(frame: str, bg: RGB, fg: RGB) -> str:
+    """Paint every row of a frame on a solid ``bg`` with ``fg`` text.
+
+    Each row is already padded to the full width, so wrapping it in a
+    background-colour SGR fills the whole screen with the cover's colour.
+    """
+    br, bgc, bb = bg
+    fr, fgc, fb = fg
+    sgr = f'\033[48;2;{br};{bgc};{bb}m\033[38;2;{fr};{fgc};{fb}m'
+    return '\n'.join(f'{sgr}{row}{_RESET}' for row in frame.split('\n'))
+
+
+def _overlay_notes(frame: str, notes: List[Tuple[int, int, str]]) -> str:
+    """Stamp dim music-note glyphs onto the blank cells of ``frame``.
+
+    Notes are only placed on spaces, so they drift *behind* the lyric letters
+    and never obscure them. Each glyph is wrapped in colour codes but stays one
+    cell wide, keeping the frame's column alignment intact.
+    """
+    if not notes:
+        return frame
+    grid = [list(row) for row in frame.split('\n')]
+    for row, col, glyph in notes:
+        if 0 <= row < len(grid) and 0 <= col < len(grid[row]) and grid[row][col] == ' ':
+            grid[row][col] = f'{_NOTE_SGR}{glyph}{_RESET}'
+    return '\n'.join(''.join(row) for row in grid)
+
+
 def render_simple_text(text: str, centered: bool = True) -> str:
     """
     Render text in simple format (no block letters).
@@ -234,7 +268,9 @@ def _paint(frame: str, clear: bool):
     if frame == _last_frame and not clear and not resized:
         return
 
-    prefix = '\033[2J\033[H' if (clear or resized) else '\033[H'
+    # Lead every paint with a reset so a previous frame's colour (e.g. the
+    # cover-tinted card) can never bleed into the next one (e.g. the lyrics).
+    prefix = ('\033[2J\033[H' if (clear or resized) else '\033[H') + _RESET
     sys.stdout.write(prefix + frame)
     sys.stdout.flush()
     _last_frame = frame
@@ -267,16 +303,49 @@ def display_waiting(clear: bool = True):
     _paint(render_waiting(), clear)
 
 
-def display_now_playing(artist: str, title: str, font_data: dict = None):
+def display_now_playing(
+    artist: str,
+    title: str,
+    font_data: dict = None,
+    bg: Optional[RGB] = None,
+    fg: Optional[RGB] = None,
+):
     """
     Display the now-playing card (track title + artist).
 
     Forces a full clear so the card cleanly replaces whatever lyrics were on
-    screen for the previous track.
+    screen for the previous track. When ``bg``/``fg`` are given (derived from
+    the album cover), the whole card is tinted in that colour with readable
+    text; otherwise it uses the default terminal colours.
 
     Args:
         artist: Artist name shown beneath the title
         title: Track title shown in block letters
         font_data: Font to use for block letters
+        bg: Optional background RGB taken from the album cover
+        fg: Optional foreground RGB (white on dark covers, dark on light ones)
     """
-    _paint(render_now_playing(artist, title, font_data), clear=True)
+    frame = render_now_playing(artist, title, font_data)
+    if bg is not None and fg is not None:
+        frame = _tint_frame(frame, bg, fg)
+    _paint(frame, clear=True)
+
+
+def display_lyrics(text: str, font_data: dict = None, notes=None, clear: bool = False):
+    """
+    Display a lyric line in the default terminal colours, with the ambient
+    music notes drifting behind it.
+
+    Args:
+        text: Lyric line to display
+        font_data: Font to use for block letters (plain centered text if None)
+        notes: Iterable of (row, col, glyph) background notes, or None
+        clear: Force a full clear before painting
+    """
+    if font_data:
+        frame = render_block_text(text, font_data)
+    else:
+        frame = render_simple_text(text)
+    if notes:
+        frame = _overlay_notes(frame, notes)
+    _paint(frame, clear)

@@ -205,6 +205,14 @@ def fetch_lyrics_on_the_fly(artist: str, title: str, lrc_dir: Path, is_wlrc: boo
         return None
 
 
+# Built-in head-start applied to every line so lyrics land *with* the vocal
+# instead of a beat behind it. Players report their MPRIS position slightly
+# ahead of what you actually hear (client-side audio buffering), and there is
+# always sub-frame paint latency on top; leading by this much cancels both so
+# the words change exactly on the beat. Stacks with the user's ``--offset``.
+LYRIC_LEAD = 0.25
+
+
 def run_visualizer(
     lrc_dir: Path,
     audio_dir: Optional[Path] = None,
@@ -212,25 +220,40 @@ def run_visualizer(
     font_data: dict = None,
     refresh_rate: float = 0.05,
     sync_offset: float = 0.0,
+    cover_color: bool = True,
+    notes: bool = True,
 ):
     """Run the LRC visualizer main loop.
 
-    On every track change the song's name is announced as a full-screen card,
-    then its lyrics start in lock-step with the audio. Playback position is read
-    once per anchor (with sub-call latency compensation) and extrapolated with
-    the monotonic clock between reads, so lines flip on time without polling the
-    player every frame.
+    On every track change the song's name is announced as a full-screen card —
+    tinted with the album cover's dominant colour (white text on dark covers,
+    dark text on light ones) — then its lyrics start in lock-step with the
+    audio on the default terminal background, with music notes drifting behind
+    them. Playback position is read once per anchor (with sub-call latency
+    compensation) and extrapolated with the monotonic clock between reads, so
+    lines flip on time without polling the player every frame.
 
     ``sync_offset`` shifts lyrics in seconds: positive shows them earlier,
-    negative later. The default of 0 should already line up with the audio.
+    negative later. It stacks on top of the built-in :data:`LYRIC_LEAD`, so the
+    default of 0 already lands the words on the beat.
     """
-    from .visualizer_player import get_state, get_audio_file_info
+    from .visualizer_player import get_state, get_audio_file_info, get_art_url
     from .visualizer_display import (
-        display_text, display_waiting, display_now_playing,
-        hide_cursor, show_cursor, clear_screen,
+        display_lyrics, display_waiting, display_now_playing,
+        get_terminal_size, hide_cursor, show_cursor, clear_screen,
     )
     from .parser import parse_lrc_simple
     from .audio import find_lrc_for_audio
+    from .cover import cover_colors
+    from .effects import NoteField
+
+    # Effective head-start: built-in buffer compensation + user offset.
+    lead = LYRIC_LEAD + sync_offset
+
+    # Background note field; recomputed at a calm cadence so the diff-renderer
+    # can skip frames in between (smooth motion, negligible CPU).
+    note_field = NoteField() if notes else None
+    NOTE_DT = 0.12
 
     # Minimum time the now-playing card stays up so the name is readable.
     BANNER_HOLD = 1.5
@@ -256,10 +279,10 @@ def run_visualizer(
         """
         if state.status == 'Paused':
             sync_data.paused = True
-            return state.position + sync_offset, None
+            return state.position + lead, None
         sync_data.paused = False
         now = time.monotonic()
-        return state.position + (now - state.sampled_at) + sync_offset, now
+        return state.position + (now - state.sampled_at) + lead, now
 
     try:
         last_title = None
@@ -272,11 +295,17 @@ def run_visualizer(
 
             artist, title = state.artist, state.title
 
-            # New track → announce it before anything else.
+            # New track → announce it before anything else, tinted with the
+            # album cover's colour (looked up once per URL, then cached).
             banner_until = 0.0
             if title != last_title:
                 last_title = title
-                display_now_playing(artist, title, font_data)
+                bg = fg = None
+                if cover_color:
+                    colors = cover_colors(get_art_url())
+                    if colors:
+                        bg, fg = colors
+                display_now_playing(artist, title, font_data, bg=bg, fg=fg)
                 banner_until = time.monotonic() + BANNER_HOLD
 
             audio_file = get_audio_file_info()
@@ -333,6 +362,8 @@ def run_visualizer(
             start_pos, start_time = _anchor(state)
             idx = _index_for(lines, start_pos)
             sync_data.should_resync = False
+            last_text = None
+            last_tq = None
 
             while sync_data.running:
                 if sync_data.should_resync:
@@ -354,9 +385,20 @@ def run_visualizer(
                     idx += 1
 
                 text = '' if idx < 0 else lines[idx][1]
-                # Diffed render: repaints only when the line (or terminal size)
-                # changes, so this is cheap to call every tick.
-                display_text(text, use_block_letters=True, font_data=font_data, clear=False)
+
+                # Recompose only when the line or the note layer actually
+                # changes — the notes tick on a quantised clock so we don't
+                # rebuild (or repaint) the frame every spin.
+                note_positions = None
+                tq = None
+                if note_field is not None:
+                    tq = int(time.monotonic() / NOTE_DT)
+                if text != last_text or tq != last_tq:
+                    last_text, last_tq = text, tq
+                    if note_field is not None:
+                        cols, rows = get_terminal_size()
+                        note_positions = note_field.positions(cols, rows, tq * NOTE_DT)
+                    display_lyrics(text, font_data=font_data, notes=note_positions)
 
                 # Spin slower while paused — nothing advances, so save CPU.
                 time.sleep(0.3 if sync_data.paused else refresh_rate)

@@ -23,8 +23,14 @@ def main():
     parser.add_argument('--refresh-rate', type=float, default=0.05,
                         help='Display refresh rate in seconds (default: 0.05)')
     parser.add_argument('--offset', type=float, default=0.0,
-                        help='Lyric sync offset in seconds: positive shows '
-                             'lyrics earlier, negative later (default: 0)')
+                        help='Extra lyric sync offset in seconds on top of the '
+                             'built-in lead: positive shows lyrics earlier, '
+                             'negative later (default: 0)')
+    parser.add_argument('--no-cover-color', action='store_true',
+                        help='Disable tinting the song-name card with the '
+                             'album cover colour')
+    parser.add_argument('--no-notes', action='store_true',
+                        help='Disable the floating music notes behind lyrics')
     parser.add_argument('--config', type=Path,
                         help='Path to config.yaml')
 
@@ -68,6 +74,8 @@ def main():
             font_data=font_data,
             refresh_rate=args.refresh_rate,
             sync_offset=args.offset,
+            cover_color=not args.no_cover_color,
+            notes=not args.no_notes,
         )
     except KeyboardInterrupt:
         print("\nExiting...")

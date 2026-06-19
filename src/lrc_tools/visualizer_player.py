@@ -141,6 +141,22 @@ def get_track_full() -> Optional[Tuple[str, str, Optional[str], Optional[float]]
     return None
 
 
+def get_art_url() -> Optional[str]:
+    """Get the album-art URL the player exposes for the current track.
+
+    Spotify publishes an ``https://i.scdn.co/...`` URL via ``mpris:artUrl``;
+    local players may publish a ``file://`` path. Returns None when absent.
+    """
+    try:
+        result = _run_playerctl(['metadata', '--format', '{{mpris:artUrl}}'])
+        if result.returncode == 0:
+            url = result.stdout.strip()
+            return url or None
+    except Exception:
+        pass
+    return None
+
+
 def get_status() -> Optional[str]:
     """
     Get current playback status.

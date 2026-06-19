@@ -1,0 +1,97 @@
+"""
+Album-art colour extraction for the now-playing card.
+
+Pulls the dominant colour out of the current track's cover so the song-name
+card can paint the terminal in that colour (with readable white/dark text).
+All lookups are cached by art URL, so re-announcing the same track — or
+flipping back to a previous one — never re-downloads or re-decodes the image.
+"""
+from io import BytesIO
+from typing import Optional, Tuple
+from urllib import request
+
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:  # Pillow is optional; cards just stay uncoloured without it.
+    PIL_AVAILABLE = False
+
+RGB = Tuple[int, int, int]
+
+# url -> (bg, fg) | None  (None caches a miss so we don't retry the network)
+_color_cache: dict = {}
+
+
+def _luminance(rgb: RGB) -> float:
+    """Perceptual luminance in 0..255 (Rec. 601 weighting)."""
+    r, g, b = rgb
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
+def text_color(bg: RGB) -> RGB:
+    """Pick a readable foreground for ``bg``: near-black on light, near-white on dark."""
+    return (18, 18, 18) if _luminance(bg) > 150 else (240, 240, 240)
+
+
+def _download(url: str, timeout: float = 4.0) -> Optional[bytes]:
+    """Fetch raw image bytes from an http(s) URL or a local ``file://`` path."""
+    try:
+        if url.startswith('file://'):
+            with open(url[7:], 'rb') as f:
+                return f.read()
+        with request.urlopen(url, timeout=timeout) as resp:
+            return resp.read()
+    except Exception:
+        return None
+
+
+def dominant_color(data: bytes) -> Optional[RGB]:
+    """Extract a representative, pleasing accent colour from image bytes.
+
+    Quantises to a small palette and scores each swatch by how common it is,
+    nudged toward saturated mid-tones — this avoids a muddy average and skips
+    the flat black/white borders many covers have, so the card gets the colour
+    a person would actually call "the album's colour".
+    """
+    if not PIL_AVAILABLE:
+        return None
+    try:
+        img = Image.open(BytesIO(data)).convert('RGB')
+        img.thumbnail((64, 64))
+        quant = img.quantize(colors=8, method=Image.Quantize.FASTOCTREE)
+        palette = quant.getpalette()
+        counts = quant.getcolors() or []
+    except Exception:
+        return None
+
+    best: Optional[RGB] = None
+    best_score = -1.0
+    for count, idx in counts:
+        r, g, b = palette[idx * 3:idx * 3 + 3]
+        mx, mn = max(r, g, b), min(r, g, b)
+        sat = (mx - mn) / mx if mx else 0.0
+        lum = _luminance((r, g, b)) / 255.0
+        # Common + saturated wins; pure black/white (lum at the extremes) loses.
+        score = count * (0.35 + sat) * (1.0 - abs(lum - 0.5) * 0.6)
+        if score > best_score:
+            best_score = score
+            best = (r, g, b)
+    return best
+
+
+def cover_colors(url: Optional[str]) -> Optional[Tuple[RGB, RGB]]:
+    """Return ``(bg, fg)`` for an art URL, or None when unavailable.
+
+    Cached per URL (including misses) so it's safe to call on every track
+    announcement without hitting the network twice for the same cover.
+    """
+    if not url or not PIL_AVAILABLE:
+        return None
+    if url in _color_cache:
+        return _color_cache[url]
+
+    data = _download(url)
+    bg = dominant_color(data) if data else None
+    result = (bg, text_color(bg)) if bg else None
+    _color_cache[url] = result
+    return result
