@@ -31,7 +31,7 @@ def position_monitor(sync_data: SyncData, get_state_func):
     last_sample = None
 
     while sync_data.running:
-        time.sleep(0.2)
+        time.sleep(0.12)  # snappy track-change / seek detection
 
         state = get_state_func()
         if state is None:
@@ -237,14 +237,15 @@ def run_visualizer(
     negative later. It stacks on top of the built-in :data:`LYRIC_LEAD`, so the
     default of 0 already lands the words on the beat.
     """
-    from .visualizer_player import get_state, get_audio_file_info, get_art_url
+    from .visualizer_player import get_state, get_audio_file_info, get_art_url, is_ad
     from .visualizer_display import (
-        display_lyrics, display_waiting, display_now_playing_glitch,
+        display_lyrics, display_waiting, display_now_playing,
+        display_now_playing_glitch, display_ad,
         get_terminal_size, hide_cursor, show_cursor, clear_screen,
     )
     from .parser import parse_lrc_simple
     from .audio import find_lrc_for_audio
-    from .cover import cover_colors, lyric_accent
+    from .cover import cover_colors, lyric_accent, vivid, text_color
     from .effects import NoteField
 
     # Effective head-start: built-in buffer compensation + user offset.
@@ -258,7 +259,33 @@ def run_visualizer(
     # Total time the now-playing card stays up (glitch burst included) before
     # lyrics take over. Kept short so the words show up quickly; they re-anchor
     # to live position when they do, so there's no late/early drift.
-    BANNER_HOLD = 2.0
+    BANNER_HOLD = 1.2
+
+    def _resolve_colors():
+        """Fetch (card_bg, card_fg, lyric_color) for the current art, off-thread.
+
+        The image download must never block the announce, so this runs in a
+        daemon thread; the holder is polled after the glitch (by when it's
+        usually done, especially on the cached replay path).
+        """
+        holder = {'done': False, 'card_bg': None, 'card_fg': None, 'lyric': None}
+
+        def work():
+            try:
+                colors = cover_colors(get_art_url())
+                if colors:
+                    raw_bg = colors[0]
+                    holder['card_bg'] = vivid(raw_bg)
+                    holder['card_fg'] = text_color(holder['card_bg'])
+                    holder['lyric'] = lyric_accent(raw_bg)
+            except Exception:
+                pass
+            finally:
+                holder['done'] = True
+
+        th = threading.Thread(target=work, daemon=True)
+        th.start()
+        return holder, th
 
     hide_cursor()
     clear_screen()
@@ -295,28 +322,43 @@ def run_visualizer(
         while sync_data.running:
             state = get_state()
             if state is None:
-                time.sleep(0.5)
+                time.sleep(0.3)
+                continue
+
+            # Spotify ad break → bored screen, no lyric lookup. Reset the title
+            # so the real track re-announces with its glitch when the ad ends.
+            if is_ad(state):
+                display_ad(font_data)
+                last_title = None
+                sync_data.current_title = None
+                lyric_color = None
+                time.sleep(0.3)
                 continue
 
             artist, title = state.artist, state.title
 
-            # New track → announce it with a glitch burst before anything else,
-            # tinted with the album cover's colour (looked up once per URL, then
-            # cached). The cover's accent is kept to paint this track's lyrics.
+            # New track → announce it with a glitch burst before anything else.
+            # The album-cover colour is resolved off-thread (download never
+            # blocks the announce); the card is revealed in colour once it lands,
+            # and a soft accent of it tints the lyrics.
             banner_until = 0.0
             if title != last_title:
                 last_title = title
-                bg = fg = None
+                holder = th = None
                 if cover_color:
-                    colors = cover_colors(get_art_url())
-                    if colors:
-                        bg, fg = colors
-                # Brighten the dominant so lyrics stay legible on the terminal
-                # background even when the cover's accent is near-black.
-                lyric_color = lyric_accent(bg) if bg else None
+                    holder, th = _resolve_colors()
                 # Time the window from here so the ~0.5s glitch counts toward it.
                 banner_until = time.monotonic() + BANNER_HOLD
-                display_now_playing_glitch(artist, title, font_data, bg=bg, fg=fg)
+                display_now_playing_glitch(artist, title, font_data)
+
+                card_bg = card_fg = None
+                lyric_color = None
+                if th is not None:
+                    th.join(timeout=0.6)  # usually already done after the glitch
+                    card_bg, card_fg = holder['card_bg'], holder['card_fg']
+                    lyric_color = holder['lyric']
+                # Reveal the settled card in the cover's colour.
+                display_now_playing(artist, title, font_data, bg=card_bg, fg=card_fg)
 
             audio_file = get_audio_file_info()
             lookup = audio_file if audio_file else Path(title)

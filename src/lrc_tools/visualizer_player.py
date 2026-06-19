@@ -9,7 +9,16 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 
-PLAYER_NAME = 'spotify'
+# Which MPRIS player to read. ``None`` = auto: let playerctl pick the active
+# player, so the visualizer works with Spotify *and* local players (mpv, VLC,
+# rhythmbox, …) out of the box. Override with ``set_player('spotify')``.
+PLAYER_NAME = None
+
+
+def set_player(name):
+    """Pin the visualizer to a specific MPRIS player (None = auto-detect)."""
+    global PLAYER_NAME
+    PLAYER_NAME = name or None
 
 
 # A single atomic snapshot of the player, read in one playerctl call.
@@ -17,13 +26,29 @@ PLAYER_NAME = 'spotify'
 # loop can compensate for query latency and stay frame-accurate.
 PlayerState = namedtuple(
     'PlayerState',
-    ['status', 'position', 'artist', 'title', 'album', 'duration', 'sampled_at'],
+    ['status', 'position', 'artist', 'title', 'album', 'duration', 'trackid',
+     'sampled_at'],
 )
 
 _STATE_FORMAT = (
     '{{status}}|||{{position}}|||{{artist}}|||{{title}}|||'
-    '{{album}}|||{{mpris:length}}'
+    '{{album}}|||{{mpris:length}}|||{{mpris:trackid}}'
 )
+
+
+def is_ad(state) -> bool:
+    """True when the snapshot is a Spotify advertisement rather than a track.
+
+    Spotify free tags ad ``mpris:trackid`` with an ``:ad:``/``/ad/`` segment;
+    that's the reliable signal. A blank artist with a generic ad title is kept
+    as a backup. Other players never match, so local playback is unaffected.
+    """
+    if state is None:
+        return False
+    tid = (state.trackid or '').lower()
+    if ':ad:' in tid or '/ad/' in tid:
+        return True
+    return not state.artist and (state.title or '').lower() in ('advertisement', 'spotify')
 
 
 def _run_playerctl(args: list) -> subprocess.CompletedProcess:
@@ -59,10 +84,10 @@ def get_state() -> Optional[PlayerState]:
         return None
 
     parts = result.stdout.strip().split('|||')
-    if len(parts) != 6:
+    if len(parts) != 7:
         return None
 
-    status, pos_us, artist, title, album, length_us = parts
+    status, pos_us, artist, title, album, length_us, trackid = parts
 
     def _to_seconds(value: str) -> Optional[float]:
         value = value.strip()
@@ -74,7 +99,10 @@ def get_state() -> Optional[PlayerState]:
             return None
 
     position = _to_seconds(pos_us)
-    if position is None or not title:
+    # Ads have no usable title; let them through (title may be blank) so the
+    # display loop can show the ad screen. Real tracks still need a title.
+    ad = ':ad:' in (trackid or '').lower() or '/ad/' in (trackid or '').lower()
+    if position is None or (not title and not ad):
         return None
 
     return PlayerState(
@@ -84,6 +112,7 @@ def get_state() -> Optional[PlayerState]:
         title=title,
         album=album or None,
         duration=_to_seconds(length_us),
+        trackid=trackid or None,
         sampled_at=(t0 + t1) / 2,
     )
 

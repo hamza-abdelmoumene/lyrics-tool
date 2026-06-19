@@ -35,19 +35,33 @@ def text_color(bg: RGB) -> RGB:
 
 
 def lyric_accent(rgb: RGB) -> RGB:
-    """Brighten a cover colour into one that pops as lyric text on a terminal.
+    """A soft, legible lyric-text colour derived from a cover colour.
 
-    The raw dominant colour can be near-black (dark navy covers) or washed out,
-    which is unreadable as text on the default background. Keeping its *hue* but
-    forcing a high value and a healthy saturation turns it into a vivid accent
-    that stays legible while still reading as "the album's colour".
+    The raw dominant can be near-black (dark navy covers) or eye-searingly
+    saturated. Keeping its *hue* but forcing a high value and pulling the
+    saturation down to a gentle band yields a calm, readable tint on the default
+    background — saturated punch is reserved for the title card, not the lyrics.
     """
     r, g, b = (c / 255 for c in rgb)
     h, s, v = colorsys.rgb_to_hsv(r, g, b)
     if s < 0.12:  # near-greyscale cover: hue is meaningless, don't invent one
-        return (220, 220, 220)
-    s = max(s, 0.55)
+        return (210, 210, 210)
+    s = min(max(s * 0.6, 0.28), 0.5)  # softer than the card; never garish
     v = max(v, 0.85)
+    r, g, b = colorsys.hsv_to_rgb(h, s, v)
+    return (round(r * 255), round(g * 255), round(b * 255))
+
+
+def vivid(rgb: RGB) -> RGB:
+    """Punch up a cover colour's saturation for the title-card background.
+
+    The card is meant to read boldly as "the album's colour", so we deepen the
+    saturation (without lightening it — :func:`text_color` adapts the text to the
+    result, dark on light cards and light on dark ones).
+    """
+    r, g, b = (c / 255 for c in rgb)
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    s = min(1.0, s * 1.25 + 0.08)
     r, g, b = colorsys.hsv_to_rgb(h, s, v)
     return (round(r * 255), round(g * 255), round(b * 255))
 

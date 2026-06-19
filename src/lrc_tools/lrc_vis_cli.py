@@ -31,6 +31,10 @@ def main():
                              'album cover colour')
     parser.add_argument('--no-notes', action='store_true',
                         help='Disable the floating music notes behind lyrics')
+    parser.add_argument('--player', type=str, default=None,
+                        help='MPRIS player to follow (e.g. spotify, mpv, vlc). '
+                             'Default: auto-detect the active player, so both '
+                             'Spotify and local players work out of the box')
     parser.add_argument('--config', type=Path,
                         help='Path to config.yaml')
 
@@ -44,9 +48,13 @@ def main():
     try:
         from .fonts import get_font, load_fonts_from_json, register_font
         from .visualizer_main import run_visualizer
+        from .visualizer_player import set_player
     except ImportError as e:
         print(f"Error: could not import visualizer modules — {e}")
         return 1
+
+    # Follow a specific player, or auto-detect the active one (Spotify/local).
+    set_player(args.player)
 
     # Load custom fonts if provided
     if args.custom_fonts:

@@ -491,6 +491,27 @@ def display_now_playing_glitch(
     _paint(frame, clear=False)
 
 
+def render_ad_screen(font_data: dict = None) -> str:
+    """Render the 'ad break' screen: 'AD' in block letters over a bored face."""
+    cols, rows = get_terminal_size()
+    if font_data:
+        block, max_width = _pack_block_lines('AD', font_data, cols)
+        if max_width > cols or len(block) + 3 > rows:
+            block = ['AD']
+    else:
+        block = ['AD']
+    lines = block + ['', '( ¬_¬ )  …zZ', '', 'ad break — hang tight']
+    return _center_block(lines, cols, rows)
+
+
+def display_ad(font_data: dict = None, color: Optional[RGB] = None, clear: bool = False):
+    """Show the bored 'ad break' screen while a Spotify advert is playing."""
+    frame = render_ad_screen(font_data)
+    if color is not None:
+        frame = _compose_lyric(frame, None, color)
+    _paint(frame, clear)
+
+
 def display_lyrics(
     text: str,
     font_data: dict = None,
