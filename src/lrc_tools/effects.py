@@ -12,7 +12,16 @@ from typing import List, Tuple
 # Reliably narrow (width-1) music glyphs in modern terminals.
 NOTE_GLYPHS = ['♪', '♫', '♩', '♬', '♭', '♮']
 
-Note = Tuple[int, int, str]  # (row, col, glyph)
+Note = Tuple[int, int, str, int]  # (row, col, glyph, grey-shade)
+
+# 256-colour grey ramp the notes are painted in: GREY_MIN is barely-there (used
+# at the top/bottom edges so notes twinkle in and out rather than popping), up to
+# GREY_SOFT for the nearest notes — still dim enough to sit behind the lyric.
+GREY_MIN = 234
+GREY_SOFT = 249
+
+# Fraction of a note's travel spent fading in (at the bottom) / out (at the top).
+_EDGE = 0.16
 
 
 class NoteField:
@@ -36,21 +45,30 @@ class NoteField:
         self._for_area = (cols, rows)
         count = max(4, int(cols * rows * 0.012 * self._density))
         rng = self._rng
-        self._particles = [
-            {
-                'col': rng.random(),                    # fractional column 0..1
-                'rise': rng.uniform(0.018, 0.06),       # screens per second
-                'phase': rng.random(),                  # vertical start offset
+        particles = []
+        for _ in range(count):
+            # Depth (0 = far, 1 = near) drives a gentle parallax: nearer notes
+            # rise a touch faster, sway a touch wider, and glow a touch brighter.
+            depth = rng.random()
+            particles.append({
+                'col': rng.random(),                        # fractional column 0..1
+                'depth': depth,
+                'rise': 0.02 + depth * 0.045,               # screens per second
+                'phase': rng.random(),                      # vertical start offset
                 'glyph': rng.choice(NOTE_GLYPHS),
-                'sway_amp': rng.uniform(0.0, 3.0),      # columns
+                'sway_amp': rng.uniform(0.0, 2.0) + depth,  # columns
                 'sway_speed': rng.uniform(0.2, 0.8),
                 'sway_phase': rng.uniform(0.0, math.tau),
-            }
-            for _ in range(count)
-        ]
+            })
+        self._particles = particles
 
     def positions(self, cols: int, rows: int, t: float) -> List[Note]:
-        """Return on-screen ``(row, col, glyph)`` notes at time ``t`` seconds."""
+        """Return on-screen ``(row, col, glyph, shade)`` notes at time ``t``.
+
+        ``shade`` is a 256-colour grey: brighter for nearer notes (depth), and
+        faded toward :data:`GREY_MIN` over the first/last :data:`_EDGE` of each
+        note's travel so notes twinkle in at the bottom and out at the top.
+        """
         if cols <= 0 or rows <= 0:
             return []
         self._ensure(cols, rows)
@@ -62,5 +80,15 @@ class NoteField:
             sway = p['sway_amp'] * math.sin(t * p['sway_speed'] + p['sway_phase'])
             col = int(round(p['col'] * (cols - 1) + sway))
             if 0 <= row < rows and 0 <= col < cols:
-                out.append((row, col, p['glyph']))
+                # Edge twinkle: ramp brightness up just after entering (low frac)
+                # and back down before exiting (high frac).
+                if frac < _EDGE:
+                    fade = frac / _EDGE
+                elif frac > 1.0 - _EDGE:
+                    fade = (1.0 - frac) / _EDGE
+                else:
+                    fade = 1.0
+                bright = (0.4 + 0.6 * p['depth']) * fade
+                shade = GREY_MIN + int(round(bright * (GREY_SOFT - GREY_MIN)))
+                out.append((row, col, p['glyph'], shade))
         return out

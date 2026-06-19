@@ -1,6 +1,6 @@
 import unittest
 
-from lrc_tools.effects import NoteField, NOTE_GLYPHS
+from lrc_tools.effects import NoteField, NOTE_GLYPHS, GREY_MIN, GREY_SOFT
 from lrc_tools import visualizer_display as vd
 from lrc_tools.fonts import get_font
 
@@ -10,10 +10,16 @@ class TestNoteField(unittest.TestCase):
         nf = NoteField()
         for cols, rows in [(80, 24), (40, 12), (120, 30)]:
             for t in (0.0, 0.7, 3.3, 9.1, 25.0):
-                for r, c, g in nf.positions(cols, rows, t):
+                for r, c, g, shade in nf.positions(cols, rows, t):
                     self.assertTrue(0 <= r < rows)
                     self.assertTrue(0 <= c < cols)
                     self.assertIn(g, NOTE_GLYPHS)
+                    self.assertTrue(GREY_MIN <= shade <= GREY_SOFT)
+
+    def test_notes_have_varied_depth_shading(self):
+        # Parallax/twinkle should produce more than one grey shade on screen.
+        shades = {n[3] for n in NoteField().positions(120, 40, 5.0)}
+        self.assertGreater(len(shades), 1)
 
     def test_deterministic_for_same_seed(self):
         a = NoteField(seed=42).positions(80, 24, 4.0)

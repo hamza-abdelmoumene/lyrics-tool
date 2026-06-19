@@ -11,8 +11,15 @@ from typing import List, Optional, Tuple
 RGB = Tuple[int, int, int]
 _RESET = '\033[0m'
 # Dim, neutral grey for the ambient notes so they read as background, never
-# competing with the lyric. 256-colour code keeps it terminal-friendly.
-_NOTE_SGR = '\033[38;5;240m'
+# competing with the lyric. 256-colour code keeps it terminal-friendly. A note
+# may carry its own grey shade (depth/twinkle); this is the fallback.
+_NOTE_GREY = 240
+_NOTE_SGR = f'\033[38;5;{_NOTE_GREY}m'
+
+
+def _note_sgr(shade: int) -> str:
+    """SGR for a note painted in 256-colour grey ``shade`` (dim → soft)."""
+    return f'\033[38;5;{shade}m'
 
 # Glyphs the track-switch glitch burst scrambles letters into. A mix of block
 # shading + symbols reads as digital corruption without breaking column width.
@@ -224,9 +231,11 @@ def _overlay_notes(frame: str, notes: List[Tuple[int, int, str]]) -> str:
     if not notes:
         return frame
     grid = [list(row) for row in frame.split('\n')]
-    for row, col, glyph in notes:
+    for note in notes:
+        row, col, glyph = note[0], note[1], note[2]
+        shade = note[3] if len(note) > 3 else _NOTE_GREY
         if 0 <= row < len(grid) and 0 <= col < len(grid[row]) and grid[row][col] == ' ':
-            grid[row][col] = f'{_NOTE_SGR}{glyph}{_RESET}'
+            grid[row][col] = f'{_note_sgr(shade)}{glyph}{_RESET}'
     return '\n'.join(''.join(row) for row in grid)
 
 
@@ -319,8 +328,10 @@ def _compose_lyric(frame: str, notes, color: Optional[RGB]) -> str:
     """
     note_map = {}
     if notes:
-        for r, c, g in notes:
-            note_map[(r, c)] = g
+        for note in notes:
+            r, c, g = note[0], note[1], note[2]
+            shade = note[3] if len(note) > 3 else _NOTE_GREY
+            note_map[(r, c)] = (g, shade)
     color_sgr = None
     if color is not None:
         cr, cg, cb = color
@@ -336,7 +347,8 @@ def _compose_lyric(frame: str, notes, color: Optional[RGB]) -> str:
                 if in_color:
                     parts.append(_RESET)
                     in_color = False
-                parts.append(f'{_NOTE_SGR}{note}{_RESET}')
+                glyph, shade = note
+                parts.append(f'{_note_sgr(shade)}{glyph}{_RESET}')
             elif ch != ' ' and color_sgr is not None:
                 if not in_color:
                     parts.append(color_sgr)
