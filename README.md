@@ -95,7 +95,7 @@ approximate and hardware-dependent.
 
 The suite contains three main utilities: `lrc-fetch`, `lrc-processor`, and the live visualizer `lrc-vis`. Follow the setup instructions below for your specific operating system.
 
-### 🐧 Linux (Full Native Support)
+### Linux (Full Native Support)
 
 Linux is the target platform for `lrc-tools`. Both the offline CLI utilities and the live visualizer work natively out of the box.
 
@@ -133,7 +133,7 @@ pipx install .[onset]
 
 ---
 
-### 🍏 macOS (CLI Tools Only / No Live Sync)
+### macOS (CLI Tools Only / No Live Sync)
 
 On macOS, you can fully use `lrc-fetch` and `lrc-processor` to manage and process your lyrics database. However, because macOS lacks Linux MPRIS support, the live visualizer `lrc-vis` cannot sync to your local media players.
 
@@ -151,7 +151,7 @@ pipx install .
 
 ---
 
-### 🪟 Windows (WSL for Full Support / Native for CLI Only)
+### Windows (WSL for Full Support / Native for CLI Only)
 
 Windows users have two ways to run `lrc-tools`:
 
@@ -172,7 +172,7 @@ By running inside WSL (Ubuntu, Arch, etc.), you get full visualizer capabilities
 
 ---
 
-### 💡 General Requirements & Tips
+### General Requirements & Tips
 *   **Terminal Color Support:** A truecolor (24-bit) terminal with UTF-8 support is required to render the cover art tinting and block letters correctly (e.g., Alacritty, Kitty, GNOME Terminal, WezTerm, Windows Terminal).
 *   **Album Cover Tinting:** Album cover color extraction requires the `Pillow` library, which is automatically installed as a dependency.
 
