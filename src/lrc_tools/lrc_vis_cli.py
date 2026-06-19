@@ -39,10 +39,20 @@ def main():
                         help='Seconds the settled song-title card stays up on a '
                              'track switch before lyrics take over, timed after '
                              'the glitch resolves (default: 1.5)')
+    parser.add_argument('--typewriter', action='store_true',
+                        help='Typewriter effect: progressively reveal each '
+                             'lyric line character by character (phrase-level '
+                             'mode only; ignored with --wlrc)')
     parser.add_argument('--config', type=Path,
                         help='Path to config.yaml')
 
     args = parser.parse_args()
+
+    typewriter = args.typewriter
+    if typewriter and args.wlrc:
+        print('Warning: --typewriter is ignored in word-level mode (--wlrc)',
+              file=sys.stderr)
+        typewriter = False
 
     lrc_dir = args.lrc_dir
     if not lrc_dir.exists():
@@ -89,6 +99,7 @@ def main():
             cover_color=not args.no_cover_color,
             notes=not args.no_notes,
             banner_hold=args.banner_hold,
+            typewriter=typewriter,
         )
     except KeyboardInterrupt:
         print("\nExiting...")

@@ -36,8 +36,9 @@ lrc-fetch = "lrc_tools.lrc_puller_cli:main"
 lrc-processor = "lrc_tools.lrc_processor_cli:main"
 
 [project.urls]
-# TODO: update to your fork once pushed.
-Homepage = "https://github.com/hamza-abdel/lrc-tools"
+Homepage = "https://github.com/hamza-abdelmoumene/lrc-tools"
+Repository = "https://github.com/hamza-abdelmoumene/lrc-tools"
+Issues = "https://github.com/hamza-abdelmoumene/lrc-tools/issues"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

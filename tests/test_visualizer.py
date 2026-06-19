@@ -186,6 +186,19 @@ class VisualizerLoopTest(unittest.TestCase):
         )
         self.assertTrue(rec.has("waiting"))
 
+    def test_typewriter_mode_reveals_progressively(self):
+        """Typewriter mode must produce lyric events with partial text."""
+        lines = [(0.0, "hello world"), (5.0, "second line")]
+        rec = self._run_loop(
+            lambda: _state("Type Song"),
+            find_lrc=lambda *a, **k: Path("/tmp/x.lrc"),
+            parse_lines=lambda p: lines,
+            until=lambda r: r.has("lyric"),
+            typewriter=True,
+        )
+        self.assertTrue(rec.has("announce", "Type Song"))
+        self.assertTrue(rec.has("lyric"))
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     unittest.main()

@@ -231,6 +231,7 @@ def run_visualizer(
     cover_color: bool = True,
     notes: bool = True,
     banner_hold: float = 1.5,
+    typewriter: bool = False,
 ):
     """Run the LRC visualizer main loop.
 
@@ -529,7 +530,11 @@ def run_visualizer(
                 continue
             sync_data.current_title = title
             start_pos, start_time = _anchor(state)
-            idx = _index_for(lines, start_pos)
+            # In typewriter mode, select lines by the raw playback position
+            # (without the lyric lead) so the line doesn't switch before the
+            # typewriter finishes revealing the current phrase.
+            _sel_pos = (start_pos - lead) if typewriter else start_pos
+            idx = _index_for(lines, _sel_pos)
             sync_data.should_resync = False
             last_text = None
             last_tq = None
@@ -542,18 +547,47 @@ def run_visualizer(
                         break  # new song → outer loop reloads + re-announces
                     if snap is not None:
                         start_pos, start_time = _anchor(snap)
-                        idx = _index_for(lines, start_pos)
+                        _sel_pos = (start_pos - lead) if typewriter else start_pos
+                        idx = _index_for(lines, _sel_pos)
 
                 if start_time is None:  # paused/frozen
                     current_pos = start_pos
                 else:
                     current_pos = start_pos + (time.monotonic() - start_time)
 
+                # In typewriter mode, advance lines by the raw position so the
+                # current phrase stays on screen until the reveal completes.
+                line_pos = (current_pos - lead) if typewriter else current_pos
+
                 # Advance to the line that should be on screen now.
-                while idx + 1 < len(lines) and current_pos >= lines[idx + 1][0]:
+                while idx + 1 < len(lines) and line_pos >= lines[idx + 1][0]:
                     idx += 1
 
                 text = '' if idx < 0 else lines[idx][1]
+
+                # Typewriter: progressively reveal the line character-by-character.
+                # Uses line_pos (raw playback position without the lyric lead) so
+                # the reveal tracks the actual vocal exactly.
+                tw_display = text
+                if typewriter and text and idx >= 0:
+                    line_start = lines[idx][0]
+                    line_end = (lines[idx + 1][0]
+                                if idx + 1 < len(lines)
+                                else line_start + 5.0)
+                    tw_span = max(0.01, line_end - line_start)
+                    tw_progress = min(1.0, max(0.0,
+                                               (line_pos - line_start) / tw_span))
+                    chars_to_show = min(len(text),
+                                        int(len(text) * tw_progress + 0.5))
+                    # Solid cursor when paused (frozen); blink at 3 Hz while playing.
+                    if sync_data.paused:
+                        tw_cursor = '▌'
+                    else:
+                        tw_cursor = '▌' if int(time.monotonic() * 3) % 2 == 0 else ' '
+                    if chars_to_show < len(text):
+                        tw_display = text[:chars_to_show] + tw_cursor
+                    else:
+                        tw_display = text
 
                 # Recompose only when the line or the note layer actually
                 # changes — the notes tick on a quantised clock so we don't
@@ -571,16 +605,24 @@ def run_visualizer(
                         lyric_color = new_color
                         last_text = None  # force a repaint in the new colour
 
-                if text != last_text or tq != last_tq:
-                    last_text, last_tq = text, tq
+                # In typewriter mode the visible portion changes every tick,
+                # so we compare the display string rather than the source text.
+                cmp_text = tw_display if typewriter else text
+                if cmp_text != last_text or tq != last_tq:
+                    last_text, last_tq = cmp_text, tq
                     if note_field is not None:
                         cols, rows = get_terminal_size()
                         note_positions = note_field.positions(cols, rows, tq * NOTE_DT)
-                    display_lyrics(text, font_data=font_data, notes=note_positions,
+                    display_lyrics(tw_display, font_data=font_data, notes=note_positions,
                                    color=lyric_color)
 
                 # Spin slower while paused — nothing advances, so save CPU.
-                time.sleep(0.3 if sync_data.paused else refresh_rate)
+                # In typewriter mode keep a snappy tick even when paused so the
+                # UI stays responsive to resume/seek.
+                if sync_data.paused:
+                    time.sleep(refresh_rate if typewriter else 0.3)
+                else:
+                    time.sleep(refresh_rate)
 
     except KeyboardInterrupt:
         pass
