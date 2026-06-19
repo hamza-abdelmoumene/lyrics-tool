@@ -1,169 +1,45 @@
-# lrc-tools
+# lyrics-tool
 
-Terminal lyrics suite: fetch synced lyrics, process them into phrase- or
-word-level timing, and render them live in the terminal as block letters,
-synchronized to whatever your media player is playing (via `playerctl`/MPRIS).
+**The ultimate terminal lyrics suite: perfectly synced, cover-tinted, and beautifully animated.**
 
-Works with **Spotify** and with **local players** (mpv, VLC, rhythmbox, and any
-other MPRIS-capable player) — the visualizer auto-follows whatever is currently
-playing, or pin it with `--player`.
-
-Three commands:
-
-| Command         | What it does                                                        |
-| --------------- | ------------------------------------------------------------------- |
-| `lrc-fetch`     | Batch-download synced lyrics from LRCLIB / syncedlyrics.            |
-| `lrc-processor` | Split long phrases; optionally convert to word-level (`.wlrc`).     |
-| `lrc-vis`       | Live, terminal block-letter visualizer synced to the active player. |
+![Demo](https://raw.githubusercontent.com/hamza-abdel/lrc-tools/main/demo.gif)
 
 ## Features
+- **Phrase and word-level sync** (`.lrc` and `.wlrc`).
+- **Cover-tinted UI**: The terminal adapts to the album cover's dominant color.
+- **Dynamic animations**: Glitch track announces, ad-break screens, and ambient floating notes.
+- **Auto-follow**: Works with Spotify and local MPRIS players via `playerctl` out of the box.
+- **Zero-lag rendering**: On-the-beat timing with a built-in lead to cancel buffer lag.
+- **Reliable background fetching**: Fetches lyrics from LRCLIB on the fly without blocking the UI.
 
-- **Phrase and word-level sync** — `.lrc` (per line) and `.wlrc` (per word).
-- **On-the-beat timing** — a built-in lead cancels the player's reported-position
-  buffer lag and paint latency, so lines land *with* the vocal, not behind it.
-  Tune further with `--offset` (positive = earlier).
-- **Glitch track announce** — every track switch opens with a short glitch burst
-  (band tears, scrambling letters, chromatic flicker) that resolves into the
-  song-name card. The settled card is held for a guaranteed window (`--banner-hold`,
-  default 1.5s, timed *after* the glitch) so it never flashes past, then hands
-  off to the lyrics.
-- **Never blocks on the network** — lyrics for the playing track are fetched on
-  the fly in the background, so the display stays responsive and track switches
-  register instantly even while a download is in flight. While it searches you
-  get an animated *finding lyrics* screen; if a song genuinely has none, it
-  settles into a calm *no synced lyrics* idle screen instead of freezing.
-- **Cover-tinted UI** — the title card paints the terminal in the album cover's
-  dominant colour (saturated, with text auto-set dark on light covers / light on
-  dark ones), and the lyrics are tinted with a softer, desaturated accent of the
-  same colour so they stay easy on the eyes. (Needs Pillow; disable with
-  `--no-cover-color`.)
-- **Auto-follow any player** — works with Spotify and local MPRIS players out of
-  the box; auto-detects the active one, or pin it with `--player spotify` / `mpv`.
-- **Ad break screen** — when Spotify plays an advert, the lyrics swap to an
-  animated *ad break* card — a bored face that cycles with a drifting snooze
-  trail over the music notes — then snaps back to the next real track.
-- **Floating music notes** — ambient notes drift up the screen behind the
-  lyrics, the idle screens, and the ad card. Disable with `--no-notes`.
-- **Responsive renderer** — block letters wrap across rows to fit the terminal,
-  and fall back to plain wrapped text when the window is too small. Resizes live.
-- **Diff rendering** — repaints only when the line, notes, or terminal size
-  change, so a held line costs ~no CPU and never flickers.
-- **Offline word mode** — if no `.wlrc` exists, word timing is derived in-memory
-  from the cached `.lrc` (no network round-trip).
-- **Custom fonts** — supply your own block-letter font via JSON.
+## Quickstart
 
-## Supported systems
+Install `lyrics-tool` using `pipx` (recommended) or `pip`:
+```bash
+pipx install .
+```
 
-- **Linux** with an MPRIS-capable player. This is the target platform: lyric sync
-  and cover art are read over MPRIS via `playerctl`.
-- **Players:** Spotify (incl. ad detection) and any local MPRIS player — mpv, VLC,
-  rhythmbox, etc. macOS/Windows are not supported (no `playerctl`/MPRIS).
+### Fetch Lyrics
+```bash
+lyrics-tool fetch --audio-dir ~/Music --output-dir ~/.local/share/lrc-tools/lyrics/raw
+```
 
-## Footprint
+### Visualize (Live Sync)
+Play a song in Spotify or mpv, then run:
+```bash
+lyrics-tool vis --lrc-dir ~/.local/share/lrc-tools/lyrics/raw
+```
 
-It's light — it's a sleep-driven loop, not a busy renderer. The diff renderer
-only repaints when the lyric line, the notes, or the terminal size actually
-change, and playback position is extrapolated from the monotonic clock instead
-of polling the player every frame.
-
-Measured on Linux / CPython 3.14, one `lrc-vis` process during continuous
-playback (lyrics flipping + floating notes):
-
-| Metric | Idle / paused | 80×24 terminal | Large terminal (≈200×50) |
-| ------ | ------------- | -------------- | ------------------------ |
-| Memory (RSS) | ~30 MiB | ~33 MiB | ~33 MiB |
-| CPU | ~0% | ~1% of one core | ~3% of one core |
-
-CPU scales with terminal size (more cells → more floating notes) and with
-`--refresh-rate`; memory is flat (lyrics and cover colours are cached, not
-accumulated). `--no-notes` trims the steady-state CPU further. Numbers are
-approximate and hardware-dependent.
+## Documentation
+- [Usage Guide](docs/usage.md)
+- [Configuration](docs/configuration.md)
+- [LRC Format](docs/lrc-format.md)
+- [Development](docs/development.md)
 
 ## Requirements
-
 - Python ≥ 3.9
-- [`playerctl`](https://github.com/altdesktop/playerctl) — read the active player (MPRIS)
-- A truecolor terminal — for the cover-tinted card and lyrics (most modern
-  terminals; falls back gracefully without colour otherwise)
-- `Pillow` — album-cover colour extraction (installed automatically)
-- `ffmpeg` (`ffprobe`) — audio duration, for processing
-- Optional: `librosa` + `numpy` (`pip install 'lrc-tools[onset]'`) for real per-word
-  onset detection instead of even spacing
+- Linux with `playerctl` installed.
+- A truecolor terminal.
 
-## Install
-
-```bash
-# Recommended: isolated install with pipx
-pipx install .
-
-# or a normal/editable install
-pip install -e .            # add [dev] for tests, [onset] for librosa
-```
-
-This puts `lrc-vis`, `lrc-fetch`, and `lrc-processor` on your `PATH`.
-
-> **Upgrading from an early build?** Cover colours need Pillow. If your pipx
-> install predates that dependency, refresh it once with
-> `pipx reinstall lrc-tools` (or `pipx inject lrc-tools Pillow`).
-
-## Usage
-
-```bash
-# 1. Fetch lyrics for your library
-lrc-fetch --audio-dir ~/Music --output-dir ~/.local/share/lrc-tools/lyrics/raw
-
-# 2. Process: split long phrases (add --wlrc for word-level)
-lrc-processor \
-  --lrc-dir ~/.local/share/lrc-tools/lyrics/raw \
-  --output-dir ~/.local/share/lrc-tools/lyrics/processed \
-  --no-require-audio
-
-# 3. Visualize, synced to the current track (auto-follows the active player)
-lrc-vis --lrc-dir ~/.local/share/lrc-tools/lyrics/processed          # phrase mode
-lrc-vis --lrc-dir ~/.local/share/lrc-tools/lyrics/processed --wlrc   # word mode
-lrc-vis --lrc-dir ... --player spotify   # pin to one player (e.g. spotify, mpv, vlc)
-```
-
-Useful flags: `--player <name>` to pin a player, `--no-cover-color` /
-`--no-notes` to strip effects, `--offset <sec>` to nudge sync (positive =
-earlier), `--banner-hold <sec>` to set how long the title card lingers (default
-1.5). Lyrics for the playing track are fetched on the fly (in the background) if
-not cached.
-
-Handy shell aliases:
-
-```sh
-LRC=~/.local/share/lrc-tools/lyrics/processed
-alias lyrics="lrc-vis --lrc-dir $LRC"                                  # phrase mode, full effects
-alias lyrics-word="lrc-vis --lrc-dir $LRC --wlrc"                      # word mode
-alias lyrics-plain="lrc-vis --lrc-dir $LRC --no-cover-color --no-notes"  # bare, no tint/notes
-```
-
-Press `Ctrl+C` to exit the visualizer.
-
-## Configuration
-
-Processing defaults can be set in a YAML file (see `src/lrc_tools/config_example.yaml`)
-and passed with `--config path/to/config.yaml`. CLI flags override the file.
-
-## Development
-
-```bash
-pip install -e '.[dev]'
-python -m pytest            # or: python -m unittest discover -s tests
-```
-
-Tests cover the pure logic (parsing, phrase→word conversion, rendering, the
-ambient note field) and the visualizer loop itself — driven with a stubbed
-player so it asserts track announces, graceful no-lyrics handling, and that a
-slow lyric fetch never blocks the display. Everything runs without `playerctl`,
-audio, or network.
-
-## Credits
-
-Forked from `tacos-terminal-lyrics`; restructured into an installable package
-with a responsive/diffed renderer, offline word-mode, and a test suite.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+[![CI](https://github.com/hamza-abdel/lrc-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/hamza-abdel/lrc-tools/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

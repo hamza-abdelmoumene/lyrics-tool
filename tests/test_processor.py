@@ -1,6 +1,6 @@
 import unittest
 
-from lrc_tools.processor_main import (
+from lrc_tools.parser.processor import (
     phrases_to_words,
     process_long_phrases,
     count_syllables,
@@ -38,7 +38,7 @@ class TestProcessor(unittest.TestCase):
         ]
         out = process_long_phrases(lines, total_duration=10.0)
         self.assertGreaterEqual(len(out), 1)
-        got = {w for l in out for w in l["text"].replace(",", " ").split()}
+        got = {w for ln in out for w in ln["text"].replace(",", " ").split()}
         self.assertTrue({"one", "two", "three", "end"} <= got)
 
 

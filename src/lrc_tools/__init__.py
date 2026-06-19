@@ -1,7 +1,7 @@
 """lrc-tools — terminal lyrics visualizer and LRC/WLRC processing suite.
 
 Submodules are imported lazily (import what you need, e.g.
-``from lrc_tools.parser import parse_lrc``) so lightweight commands like
+``from lrc_tools.parser.core import parse_lrc``) so lightweight commands like
 ``lrc-vis --help`` don't pull in optional/heavy dependencies.
 """
 

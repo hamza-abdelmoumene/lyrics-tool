@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lrc_tools.parser import (
+from lrc_tools.parser.core import (
     parse_lrc,
     parse_lrc_simple,
     write_lrc,
@@ -26,7 +26,7 @@ class TestParser(unittest.TestCase):
 
     def test_sorted_by_time(self):
         lines = parse_lrc(_tmp("[01:00.00]b\n[00:10.00]a\n"))
-        self.assertEqual([l["text"] for l in lines], ["a", "b"])
+        self.assertEqual([ln["text"] for ln in lines], ["a", "b"])
 
     def test_format_timestamp(self):
         self.assertEqual(format_timestamp(72.5), "[01:12.50]")

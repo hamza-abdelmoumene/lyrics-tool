@@ -19,9 +19,9 @@ def _progress_bar(processed: int, total: int, found: int, errors: int):
     )
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Batch download LRC lyrics from LRCLIB (with syncedlyrics fallback)"
+def setup_parser(subparsers):
+    parser = subparsers.add_parser(
+        'fetch', help="Batch download LRC lyrics from LRCLIB (with syncedlyrics fallback)"
     )
     parser.add_argument('--audio-dir', type=Path, required=True,
                         help='Directory containing audio files')
@@ -39,8 +39,9 @@ def main():
                         help='Prefer plain lyrics over synced')
     parser.add_argument('--config', type=Path,
                         help='Path to config.yaml')
+    parser.set_defaults(func=run)
 
-    args = parser.parse_args()
+def run(args):
 
     audio_dir = args.audio_dir
     output_dir = args.output_dir
@@ -53,7 +54,7 @@ def main():
 
     # Load config, let CLI args override
     try:
-        from .config import Config
+        from lrc_tools.config.core import Config
         cfg = Config(args.config).puller
     except ImportError:
         cfg = None
@@ -90,8 +91,8 @@ def main():
         prefer_synced = cfg.prefer_synced
 
     try:
-        from .audio import get_audio_files
-        from .puller import (
+        from lrc_tools.sync.audio import get_audio_files
+        from lrc_tools.api.puller import (
             extract_metadata, search_song, save_lyrics,
             resolve_output_path, MUTAGEN_AVAILABLE, SYNCEDLYRICS_AVAILABLE
         )
@@ -100,7 +101,7 @@ def main():
         return 1
 
     print(f"\n{'='*60}")
-    print(f"LRC PULLER")
+    print("LRC PULLER")
     print(f"{'='*60}")
     print(f"Audio dir:     {audio_dir}")
     print(f"Output dir:    {output_dir}")
@@ -213,7 +214,7 @@ def main():
             print(f"  [{i}/{len(found_results)}] {result['file']}: {status}")
 
     print(f"\n{'='*60}")
-    print(f"Done!")
+    print("Done!")
     print(f"  ✓ Saved:   {tally['success']}")
     if sources.get('lrclib'):
         print(f"      lrclib:       {sources['lrclib']}")
@@ -227,5 +228,4 @@ def main():
     return 0
 
 
-if __name__ == '__main__':
-    sys.exit(main())
+

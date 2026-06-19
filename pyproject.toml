@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "lrc-tools"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Terminal lyrics visualizer and LRC/WLRC processing suite (playerctl + LRCLIB)"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -28,22 +28,39 @@ dependencies = [
 [project.optional-dependencies]
 # Per-word onset detection (real timing instead of even spacing).
 onset = ["librosa>=0.10", "numpy>=1.23"]
-dev = ["pytest>=7"]
+dev = [
+    "pytest>=7",
+    "pytest-cov>=4",
+    "ruff>=0.3",
+    "mypy>=1.0",
+    "types-PyYAML>=6.0"
+]
 
 [project.scripts]
-lrc-vis = "lrc_tools.lrc_vis_cli:main"
-lrc-fetch = "lrc_tools.lrc_puller_cli:main"
-lrc-processor = "lrc_tools.lrc_processor_cli:main"
+lyrics-tool = "lrc_tools.cli.main:main"
 
 [project.urls]
-# TODO: update to your fork once pushed.
 Homepage = "https://github.com/hamza-abdel/lrc-tools"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
+
+[tool.setuptools.dynamic]
+version = {attr = "lrc_tools.__about__.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 lrc_tools = ["custom_fonts.json", "config_example.yaml"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

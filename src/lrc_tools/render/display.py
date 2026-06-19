@@ -129,7 +129,7 @@ def _pack_block_lines(text: str, font_data: dict, cols: int) -> tuple:
     current: List[str] = []
     for word in words:
         trial = current + [word]
-        trial_w = max(len(l) for l in _render_block_line(trial, font_data, height))
+        trial_w = max(len(ln) for ln in _render_block_line(trial, font_data, height))
         if current and trial_w > cols:
             row_words.append(current)
             current = [word]
@@ -145,7 +145,7 @@ def _pack_block_lines(text: str, font_data: dict, cols: int) -> tuple:
             block_lines.append('')
         block_lines.extend(_render_block_line(rw, font_data, height))
 
-    max_width = max((len(l) for l in block_lines), default=0)
+    max_width = max((len(ln) for ln in block_lines), default=0)
     return block_lines, max_width
 
 

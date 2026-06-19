@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='LRC Lyrics Visualizer with Playerctl integration'
+def setup_parser(subparsers):
+    parser = subparsers.add_parser(
+        'vis', help='LRC Lyrics Visualizer with Playerctl integration'
     )
     parser.add_argument('--lrc-dir', type=Path, required=True,
                         help='Directory containing LRC files')
@@ -41,8 +41,9 @@ def main():
                              'the glitch resolves (default: 1.5)')
     parser.add_argument('--config', type=Path,
                         help='Path to config.yaml')
+    parser.set_defaults(func=run)
 
-    args = parser.parse_args()
+def run(args):
 
     lrc_dir = args.lrc_dir
     if not lrc_dir.exists():
@@ -50,9 +51,9 @@ def main():
         return 1
 
     try:
-        from .fonts import get_font, load_fonts_from_json, register_font
-        from .visualizer_main import run_visualizer
-        from .visualizer_player import set_player
+        from lrc_tools.render.fonts import get_font, load_fonts_from_json, register_font
+        from lrc_tools.render.main import run_visualizer
+        from lrc_tools.sync.player import set_player
     except ImportError as e:
         print(f"Error: could not import visualizer modules — {e}")
         return 1
@@ -72,10 +73,10 @@ def main():
 
     font_data = get_font(args.font)
 
-    print(f"Starting LRC visualizer...")
+    print("Starting LRC visualizer...")
     print(f"LRC directory: {lrc_dir}")
     print(f"Font: {args.font}")
-    print(f"Press Ctrl+C to exit")
+    print("Press Ctrl+C to exit")
     print()
 
     try:
@@ -95,5 +96,4 @@ def main():
         return 0
 
 
-if __name__ == '__main__':
-    sys.exit(main())
+

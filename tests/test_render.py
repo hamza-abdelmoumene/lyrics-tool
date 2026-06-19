@@ -1,7 +1,7 @@
 import unittest
 
-from lrc_tools import visualizer_display as vd
-from lrc_tools.fonts import get_font
+from lrc_tools.render import display as vd
+from lrc_tools.render.fonts import get_font
 
 
 class TestRender(unittest.TestCase):
@@ -17,16 +17,16 @@ class TestRender(unittest.TestCase):
         for cols, rows in [(80, 24), (40, 24), (30, 20), (120, 30)]:
             lines = self._frame("LOVE", cols, rows).split("\n")
             self.assertLessEqual(len(lines), rows)
-            self.assertTrue(all(len(l) <= cols for l in lines))
+            self.assertTrue(all(len(ln) <= cols for ln in lines))
 
     def test_long_text_wraps_in_bounds(self):
         lines = self._frame("EVERYTHING I WANTED RIGHT NOW TONIGHT", 60, 24).split("\n")
         self.assertLessEqual(len(lines), 24)
-        self.assertTrue(all(len(l) <= 60 for l in lines))
+        self.assertTrue(all(len(ln) <= 60 for ln in lines))
 
     def test_word_wider_than_terminal_falls_back_plain(self):
         lines = self._frame("SUPERCALIFRAGILISTIC", 10, 24).split("\n")
-        self.assertTrue(all(len(l) <= 10 for l in lines))
+        self.assertTrue(all(len(ln) <= 10 for ln in lines))
 
     def test_render_cache_returns_same_object(self):
         vd.get_terminal_size = lambda: (80, 24)
@@ -58,7 +58,7 @@ class TestIdleScreens(unittest.TestCase):
         self.assertTrue(all(len(r) == 60 for r in rows))
 
     def test_status_notes_keep_visible_width(self):
-        from lrc_tools.effects import NoteField
+        from lrc_tools.render.effects import NoteField
         notes = NoteField().positions(60, 18, 3.0)
         frame = vd._render_status(["x"], notes=notes)
         for row in frame.split("\n"):
@@ -72,7 +72,8 @@ class TestIdleScreens(unittest.TestCase):
 
     def _paint_silently(self, fn, *args, **kwargs):
         """Call a display_* helper, capturing its terminal writes."""
-        import contextlib, io
+        import contextlib
+        import io
         vd._last_frame = None
         with contextlib.redirect_stdout(io.StringIO()):
             fn(*args, **kwargs)

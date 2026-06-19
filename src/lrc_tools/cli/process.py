@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='Process LRC files: split long phrases and optionally convert to word-level WLRC'
+def setup_parser(subparsers):
+    parser = subparsers.add_parser(
+        'process', help='Process LRC files: split long phrases and optionally convert to word-level WLRC'
     )
     parser.add_argument('--lrc-dir', type=Path, required=True,
                         help='Directory containing input .lrc files')
@@ -36,8 +36,9 @@ def main():
                         help='Suppress per-file output')
     parser.add_argument('--config', type=Path,
                         help='Path to config.yaml')
+    parser.set_defaults(func=run)
 
-    args = parser.parse_args()
+def run(args):
 
     lrc_dir = args.lrc_dir
     output_dir = args.output_dir
@@ -54,7 +55,7 @@ def main():
 
     # Load config, then let CLI args override
     try:
-        from .config import Config
+        from lrc_tools.config.core import Config
         cfg = Config(args.config).processor
     except ImportError:
         cfg = None
@@ -80,7 +81,7 @@ def main():
         return 0
 
     print(f"\n{'='*60}")
-    print(f"LRC PROCESSOR")
+    print("LRC PROCESSOR")
     print(f"{'='*60}")
     print(f"Input dir:     {lrc_dir}")
     print(f"Output dir:    {output_dir}")
@@ -121,7 +122,7 @@ def main():
             skipped += 1
 
     print(f"\n{'='*60}")
-    print(f"Done!")
+    print("Done!")
     print(f"  ✓ Processed: {success}")
     print(f"  - Skipped:   {skipped}")
     print(f"\nOutput: {output_dir}")
@@ -130,5 +131,4 @@ def main():
     return 0
 
 
-if __name__ == '__main__':
-    sys.exit(main())
+

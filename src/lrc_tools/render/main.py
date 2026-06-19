@@ -103,12 +103,12 @@ def fetch_lyrics_on_the_fly(artist: str, title: str, lrc_dir: Path, is_wlrc: boo
     player already exposes for the current track. Broader search runs only on a
     miss; repeated misses for the same track are cached to skip the network.
     """
-    from .puller import (
+    from lrc_tools.api.puller import (
         search_lrclib, search_syncedlyrics, _clean_title, _pick_lyrics, get_lrclib,
     )
-    from .parser import parse_lrc, write_lrc
+    from lrc_tools.parser.core import parse_lrc, write_lrc
     from .processor_main import process_long_phrases, phrases_to_words
-    from .visualizer_player import get_track_full
+    from lrc_tools.sync.player import get_track_full
 
     cache_key = (artist.lower(), title.lower())
     if cache_key in _no_lyrics_cache:
@@ -246,16 +246,16 @@ def run_visualizer(
     negative later. It stacks on top of the built-in :data:`LYRIC_LEAD`, so the
     default of 0 already lands the words on the beat.
     """
-    from .visualizer_player import get_state, get_audio_file_info, get_art_url, is_ad
-    from .visualizer_display import (
+    from lrc_tools.sync.player import get_state, get_audio_file_info, get_art_url, is_ad
+    from lrc_tools.render.display import (
         display_lyrics, display_waiting, display_now_playing,
         display_now_playing_glitch, display_ad, display_searching, display_no_lyrics,
         get_terminal_size, hide_cursor, show_cursor, clear_screen,
     )
-    from .parser import parse_lrc_simple
-    from .audio import find_lrc_for_audio
-    from .cover import cover_colors, lyric_accent, vivid, text_color
-    from .effects import NoteField
+    from lrc_tools.parser.core import parse_lrc_simple
+    from lrc_tools.sync.audio import find_lrc_for_audio
+    from lrc_tools.render.cover import cover_colors, lyric_accent, vivid, text_color
+    from lrc_tools.render.effects import NoteField
 
     # Effective head-start: built-in buffer compensation + user offset.
     lead = LYRIC_LEAD + sync_offset
@@ -387,7 +387,7 @@ def run_visualizer(
                 phrase_lrc = find_lrc_for_audio(
                     lookup, lrc_dir, artist, title, is_wlrc=False)
                 if phrase_lrc:
-                    from .parser import parse_lrc
+                    from lrc_tools.parser.core import parse_lrc
                     from .processor_main import phrases_to_words
                     words = phrases_to_words(parse_lrc(phrase_lrc))
                     return [(w['timestamp'], w['text']) for w in words] or None

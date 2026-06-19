@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from typing import List, Dict, Tuple
 
+from lrc_tools.exceptions import MalformedLRCError
+
 
 def parse_lrc(lrc_path: Path) -> List[Dict]:
     """
@@ -37,6 +39,8 @@ def parse_lrc(lrc_path: Path) -> List[Dict]:
                         'text': text
                     })
     
+    if not lines:
+        raise MalformedLRCError(f"No valid lyric timestamps found in {lrc_path}")
     return sorted(lines, key=lambda x: x['timestamp'])
 
 
@@ -67,6 +71,8 @@ def parse_lrc_simple(lrc_path: Path) -> List[Tuple[float, str]]:
                 if text:
                     lines.append((timestamp, text))
     
+    if not lines:
+        raise MalformedLRCError(f"No valid lyric timestamps found in {lrc_path}")
     return sorted(lines, key=lambda x: x[0])
 
 

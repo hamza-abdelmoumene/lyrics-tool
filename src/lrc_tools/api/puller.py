@@ -11,6 +11,8 @@ from typing import Optional, Dict, List, Tuple
 from urllib import parse, request
 from urllib.error import HTTPError, URLError
 
+from lrc_tools.exceptions import NetworkError
+
 # Suppress syncedlyrics verbose logging
 logging.getLogger('syncedlyrics').setLevel(logging.CRITICAL)
 
@@ -211,12 +213,12 @@ def search_lrclib(
             with request.urlopen(url, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
                 return data if isinstance(data, list) else []
-        except (HTTPError, URLError, TimeoutError):
+        except (HTTPError, URLError, TimeoutError) as e:
             if attempt == max_retries - 1:
-                return []
+                raise NetworkError(f"LRCLIB search failed: {e}")
             time.sleep(retry_backoff * (attempt + 1))
 
-    return []
+    raise NetworkError("Max retries exceeded")
 
 
 def get_lrclib(
@@ -225,6 +227,8 @@ def get_lrclib(
     album: Optional[str] = None,
     duration: Optional[float] = None,
     timeout: float = 8.0,
+    max_retries: int = 3,
+    retry_backoff: float = 0.5,
 ) -> Optional[str]:
     """
     Exact-match lookup via LRCLIB's /api/get endpoint.
@@ -242,14 +246,24 @@ def get_lrclib(
         params['duration'] = str(int(duration))
 
     url = f"https://lrclib.net/api/get?{parse.urlencode(params)}"
-    try:
-        with request.urlopen(url, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode())
-            return _pick_lyrics(data, prefer_synced=True)
-    except (HTTPError, URLError, TimeoutError):
-        return None
-    except Exception:
-        return None
+    
+    for attempt in range(max_retries):
+        try:
+            with request.urlopen(url, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode())
+                return _pick_lyrics(data, prefer_synced=True)
+        except HTTPError as e:
+            if e.code == 404:
+                return None  # explicit not found
+            if attempt == max_retries - 1:
+                raise NetworkError(f"LRCLIB get failed: {e}")
+        except (URLError, TimeoutError) as e:
+            if attempt == max_retries - 1:
+                raise NetworkError(f"LRCLIB get failed: {e}")
+            
+        time.sleep(retry_backoff * (attempt + 1))
+        
+    return None
 
 
 def _pick_lyrics(result: Dict, prefer_synced: bool = True) -> Optional[str]:

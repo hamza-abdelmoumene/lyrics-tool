@@ -13,12 +13,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from lrc_tools import visualizer_main as vm
-from lrc_tools import visualizer_player as vp
-from lrc_tools import visualizer_display as vd
-from lrc_tools import parser as pr
-from lrc_tools import audio as au
-from lrc_tools.fonts import get_font
+from lrc_tools.render import main as vm
+from lrc_tools.sync import player as vp
+from lrc_tools.render import display as vd
+from lrc_tools.parser import core as pr
+from lrc_tools.sync import audio as au
+from lrc_tools.render.fonts import get_font
 
 
 def _state(title, status="Playing", artist="Artist", trackid="track:1"):
