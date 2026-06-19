@@ -8,6 +8,32 @@ Works with **Spotify** and with **local players** (mpv, VLC, rhythmbox, and any
 other MPRIS-capable player) — the visualizer auto-follows whatever is currently
 playing, or pin it with `--player`.
 
+## Previews
+
+<p align="center">
+  <kbd>
+    <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lrc-tools/main/assets/image-preview.gif" alt="Terminal Lyric Visualizer" width="48%" />
+  </kbd>
+  <kbd>
+    <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lrc-tools/main/assets/song-phrase-preview.gif" alt="Phrase-level lyric rendering & visualizer" width="48%" />
+  </kbd>
+</p>
+<p align="center">
+  <kbd>
+    <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lrc-tools/main/assets/switching-preview.gif" alt="Smooth track switching glitch & banner" width="48%" />
+  </kbd>
+  <kbd>
+    <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lrc-tools/main/assets/colors-preview.png" alt="Dynamic cover-art color-tinted theme" width="48%" />
+  </kbd>
+</p>
+<p align="center">
+  <kbd>
+    <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lrc-tools/main/assets/ads-preview.gif" alt="Animated ad break screen" width="48%" />
+  </kbd>
+</p>
+
+## Commands
+
 Three commands:
 
 | Command         | What it does                                                        |
@@ -19,6 +45,7 @@ Three commands:
 ## Features
 
 - **Phrase and word-level sync** — `.lrc` (per line) and `.wlrc` (per word).
+- **Typewriter mode** — progressive character reveal with a blinking cursor.
 - **On-the-beat timing** — a built-in lead cancels the player's reported-position
   buffer lag and paint latency, so lines land *with* the vocal, not behind it.
   Tune further with `--offset` (positive = earlier).
@@ -136,6 +163,7 @@ Handy shell aliases:
 LRC=~/.local/share/lrc-tools/lyrics/processed
 alias lyrics="lrc-vis --lrc-dir $LRC"                                  # phrase mode, full effects
 alias lyrics-word="lrc-vis --lrc-dir $LRC --wlrc"                      # word mode
+alias lyrics-typewriter="lrc-vis --lrc-dir $LRC --typewriter"          # typewriter effect
 alias lyrics-plain="lrc-vis --lrc-dir $LRC --no-cover-color --no-notes"  # bare, no tint/notes
 ```
 
