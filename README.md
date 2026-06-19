@@ -65,12 +65,7 @@ Three commands:
   from the cached `.lrc` (no network round-trip).
 - **Custom fonts** — supply your own block-letter font via JSON.
 
-## Supported systems
 
-- **Linux** with an MPRIS-capable player. This is the target platform: lyric sync
-  and cover art are read over MPRIS via `playerctl`.
-- **Players:** Spotify (incl. ad detection) and any local MPRIS player — mpv, VLC,
-  rhythmbox, etc. macOS/Windows are not supported (no `playerctl`/MPRIS).
 
 ## Footprint
 
@@ -92,32 +87,94 @@ CPU scales with terminal size (more cells → more floating notes) and with
 accumulated). `--no-notes` trims the steady-state CPU further. Numbers are
 approximate and hardware-dependent.
 
-## Requirements
+## Installation & Requirements
 
-- Python ≥ 3.9
-- [`playerctl`](https://github.com/altdesktop/playerctl) — read the active player (MPRIS)
-- A truecolor terminal — for the cover-tinted card and lyrics (most modern
-  terminals; falls back gracefully without colour otherwise)
-- `Pillow` — album-cover colour extraction (installed automatically)
-- `ffmpeg` (`ffprobe`) — audio duration, for processing
-- Optional: `librosa` + `numpy` (`pip install 'lrc-tools[onset]'`) for real per-word
-  onset detection instead of even spacing
+The suite contains three main utilities: `lrc-fetch`, `lrc-processor`, and the live visualizer `lrc-vis`. Follow the setup instructions below for your specific operating system.
 
-## Install
+### 🐧 Linux (Full Native Support)
 
+Linux is the target platform for `lrc-tools`. Both the offline CLI utilities and the live visualizer work natively out of the box.
+
+#### 1. System Dependencies
+Install `playerctl` (for player synchronization) and `ffmpeg` (for processing audio durations):
+
+*   **Ubuntu / Debian:**
+    ```bash
+    sudo apt update
+    sudo apt install playerctl ffmpeg
+    ```
+*   **Arch Linux:**
+    ```bash
+    sudo pacman -S playerctl ffmpeg
+    ```
+*   **Fedora:**
+    ```bash
+    sudo dnf install playerctl -y && sudo dnf install ffmpeg -y
+    ```
+
+#### 2. Python Package Installation
+Using [`pipx`](https://github.com/pypa/pipx) is highly recommended to prevent dependency conflicts:
 ```bash
-# Recommended: isolated install with pipx
+# Recommended installation
 pipx install .
 
-# or a normal/editable install
-pip install -e .            # add [dev] for tests, [onset] for librosa
+# Or install editable/locally using pip
+pip install -e .
 ```
+For optional high-accuracy word-level onset detection using librosa, install with:
+```bash
+pipx install .[onset]
+# or: pip install -e '.[onset]'
+```
+
+---
+
+### 🍏 macOS (CLI Tools Only / No Live Sync)
+
+On macOS, you can fully use `lrc-fetch` and `lrc-processor` to manage and process your lyrics database. However, because macOS lacks Linux MPRIS support, the live visualizer `lrc-vis` cannot sync to your local media players.
+
+#### 1. System Dependencies
+Install `ffmpeg` via Homebrew:
+```bash
+brew install ffmpeg
+```
+
+#### 2. Python Package Installation
+Install the suite via `pipx` or `pip`:
+```bash
+pipx install .
+```
+
+---
+
+### 🪟 Windows (WSL for Full Support / Native for CLI Only)
+
+Windows users have two ways to run `lrc-tools`:
+
+#### Option A: Windows Subsystem for Linux (WSL) — *Recommended for Full Support*
+By running inside WSL (Ubuntu, Arch, etc.), you get full visualizer capabilities.
+1. Install WSL from your terminal: `wsl --install`
+2. Follow the **Linux** installation instructions above within your WSL environment.
+3. *Note:* Make sure your media player is running or accessible from the WSL terminal namespace.
+
+#### Option B: Native Windows Command Prompt/PowerShell — *CLI Tools Only*
+1. Download and install Python (ensure you check "Add Python to PATH").
+2. Download and install `ffmpeg` and add it to your System PATH environment variables.
+3. Install the suite from the project directory:
+   ```powershell
+   pip install .
+   ```
+4. Use `lrc-fetch` and `lrc-processor` to download and convert your lyrics.
+
+---
+
+### 💡 General Requirements & Tips
+*   **Terminal Color Support:** A truecolor (24-bit) terminal with UTF-8 support is required to render the cover art tinting and block letters correctly (e.g., Alacritty, Kitty, GNOME Terminal, WezTerm, Windows Terminal).
+*   **Album Cover Tinting:** Album cover color extraction requires the `Pillow` library, which is automatically installed as a dependency.
 
 This puts `lrc-vis`, `lrc-fetch`, and `lrc-processor` on your `PATH`.
 
-> **Upgrading from an early build?** Cover colours need Pillow. If your pipx
-> install predates that dependency, refresh it once with
-> `pipx reinstall lrc-tools` (or `pipx inject lrc-tools Pillow`).
+> **Upgrading from an early build?** Cover colors need Pillow. If your pipx install predates that dependency, refresh it once with `pipx reinstall lrc-tools` (or `pipx inject lrc-tools Pillow`).
 
 ## Usage
 
