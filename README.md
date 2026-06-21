@@ -207,7 +207,7 @@ not cached.
 Handy shell aliases:
 
 ```sh
-LRC=~/.local/share/lrc-tools/lyrics/processed
+LRC=~/.local/share/lyrics-tool/lyrics/processed
 alias lyrics="lrc-vis --lrc-dir $LRC"                                  # phrase mode, full effects
 alias lyrics-word="lrc-vis --lrc-dir $LRC --wlrc"                      # word mode
 alias lyrics-typewriter="lrc-vis --lrc-dir $LRC --typewriter"          # typewriter effect
