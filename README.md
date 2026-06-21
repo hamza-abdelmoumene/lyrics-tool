@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎤 lyricsooo
+# lyricsooo
 
 **Live, synced song lyrics — rendered as block letters right in your terminal.**
 
