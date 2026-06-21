@@ -1,5 +1,5 @@
 """
-Lyrics fetching utilities for lrc-tools
+Lyrics fetching utilities for lyrics-tool
 Handles metadata extraction, LRCLIB API search, and syncedlyrics fallback
 """
 import json

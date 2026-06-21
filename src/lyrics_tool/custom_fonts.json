@@ -1,7 +1,7 @@
 {
-  "_comment": "Custom font definitions for lrc-tools visualizer",
+  "_comment": "Custom font definitions for lyrics-tool visualizer",
   "_format": "Each font is a dictionary mapping characters to arrays of strings (lines)",
-  "_usage": "lrc-vis --lrc-dir ~/Lyrics --custom-fonts this_file.json --font mini",
+  "_usage": "lyricsooo --lrc-dir ~/Lyrics --custom-fonts this_file.json --font mini",
   
   "mini": {
     "A": ["▄▀▄", "█▀█", "▀ ▀"],

@@ -1,7 +1,7 @@
-# LRC Tools Configuration File
+# lyrics-tool Configuration File
 # Save as config.yaml and use with --config flag
 
-# Processor settings (for lrc-processor)
+# Processor settings (for lyricsooo-cook)
 processor:
   # Maximum duration for a single phrase (seconds)
   # Phrases longer than this will be split at natural boundaries
@@ -27,7 +27,7 @@ processor:
   # Only used if use_onset_detection is true
   onset_blend_factor: 0.5
 
-# Visualizer settings (for lrc-vis)
+# Visualizer settings (for lyricsooo)
 visualizer:
   # Default font to use ('block' or 'compact')
   default_font: "block"
@@ -53,8 +53,8 @@ visualizer:
 
 # Example usage:
 # 
-# lrc-processor --config config.yaml --lrc-dir ~/Lyrics --audio-dir ~/Music --output-dir ~/Processed
-# lrc-vis --config config.yaml --lrc-dir ~/Lyrics
+# lyricsooo-cook --config config.yaml --lrc-dir ~/Lyrics --audio-dir ~/Music --output-dir ~/Processed
+# lyricsooo --config config.yaml --lrc-dir ~/Lyrics
 #
 # You can also override specific settings via command line:
-# lrc-processor --config config.yaml --max-phrase-duration 3.0 --lrc-dir ~/Lyrics ...
+# lyricsooo-cook --config config.yaml --max-phrase-duration 3.0 --lrc-dir ~/Lyrics ...

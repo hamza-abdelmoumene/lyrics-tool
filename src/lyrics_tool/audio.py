@@ -1,6 +1,6 @@
 """
 Audio file utilities
-Shared by all tools in the lrc-tools package
+Shared by all tools in the lyrics-tool package
 """
 import os
 import subprocess

@@ -1,17 +1,21 @@
 """
-LRC Visualizer CLI - Display synchronized lyrics
+lyricsooo — live terminal lyrics visualizer (playerctl/MPRIS).
 """
 import argparse
 import sys
 from pathlib import Path
 
+from .paths import processed_dir, ensure_dir
+
 
 def main():
     parser = argparse.ArgumentParser(
-        description='LRC Lyrics Visualizer with Playerctl integration'
+        prog='lyricsooo',
+        description='Live terminal lyrics visualizer with playerctl/MPRIS sync',
     )
-    parser.add_argument('--lrc-dir', type=Path, required=True,
-                        help='Directory containing LRC files')
+    parser.add_argument('--lrc-dir', type=Path, default=None,
+                        help='Directory of LRC files to display '
+                             '(default: ~/.local/share/lyrics-tool/lyrics/processed)')
     parser.add_argument('--audio-dir', type=Path,
                         help='Directory containing audio files')
     parser.add_argument('--wlrc', action='store_true',
@@ -54,10 +58,21 @@ def main():
               file=sys.stderr)
         typewriter = False
 
-    lrc_dir = args.lrc_dir
-    if not lrc_dir.exists():
-        print(f"Error: LRC directory {lrc_dir} does not exist", file=sys.stderr)
-        return 1
+    # Resolve the lyrics directory. With no --lrc-dir we use the shared default
+    # location and create it if missing, so a fresh install runs immediately:
+    # the visualizer fetches and caches lyrics on the fly as tracks play.
+    if args.lrc_dir is None:
+        lrc_dir = ensure_dir(processed_dir())
+        if not any(lrc_dir.iterdir()):
+            print(f"No cached lyrics yet in {lrc_dir}.")
+            print("They'll be fetched automatically as tracks play.")
+            print("Tip: bulk-download in advance with  lyricsooo-fetch --audio-dir ~/Music")
+            print()
+    else:
+        lrc_dir = args.lrc_dir
+        if not lrc_dir.exists():
+            print(f"Error: LRC directory {lrc_dir} does not exist", file=sys.stderr)
+            return 1
 
     try:
         from .fonts import get_font, load_fonts_from_json, register_font

@@ -1,9 +1,9 @@
 import unittest
 from io import BytesIO
 
-from lrc_tools.cover import text_color, dominant_color, PIL_AVAILABLE
-from lrc_tools import visualizer_display as vd
-from lrc_tools.fonts import get_font
+from lyrics_tool.cover import text_color, dominant_color, PIL_AVAILABLE
+from lyrics_tool import visualizer_display as vd
+from lyrics_tool.fonts import get_font
 
 
 def _png(rgb, size=(64, 64)) -> bytes:

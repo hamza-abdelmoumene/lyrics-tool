@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lrc-tools"
+name = "lyrics-tool"
 version = "0.1.0"
 description = "Terminal lyrics visualizer and LRC/WLRC processing suite (playerctl + LRCLIB)"
 readme = "README.md"
@@ -31,9 +31,9 @@ onset = ["librosa>=0.10", "numpy>=1.23"]
 dev = ["pytest>=7", "ruff>=0.5", "mypy>=1.8"]
 
 [project.scripts]
-lrc-vis = "lrc_tools.lrc_vis_cli:main"
-lrc-fetch = "lrc_tools.lrc_puller_cli:main"
-lrc-processor = "lrc_tools.lrc_processor_cli:main"
+lyricsooo = "lyrics_tool.cli_visualizer:main"
+lyricsooo-fetch = "lyrics_tool.cli_fetch:main"
+lyricsooo-cook = "lyrics_tool.cli_cook:main"
 
 [project.urls]
 Homepage = "https://github.com/hamza-abdelmoumene/lyrics-tool"
@@ -47,7 +47,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-lrc_tools = ["custom_fonts.json", "config_example.yaml"]
+lyrics_tool = ["custom_fonts.json", "config_example.yaml"]
 
 [tool.ruff.lint]
 # Default rules (E, F) plus ignore E741: single-letter `l` reads as "line"/"letter"

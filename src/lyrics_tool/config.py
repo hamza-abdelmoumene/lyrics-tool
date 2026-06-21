@@ -1,5 +1,5 @@
 """
-Configuration management for lrc-tools
+Configuration management for lyrics-tool
 """
 import json
 import yaml

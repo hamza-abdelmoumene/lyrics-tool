@@ -1,8 +1,8 @@
 import unittest
 
-from lrc_tools.effects import NoteField, NOTE_GLYPHS, GREY_MIN, GREY_SOFT
-from lrc_tools import visualizer_display as vd
-from lrc_tools.fonts import get_font
+from lyrics_tool.effects import NoteField, NOTE_GLYPHS, GREY_MIN, GREY_SOFT
+from lyrics_tool import visualizer_display as vd
+from lyrics_tool.fonts import get_font
 
 
 class TestNoteField(unittest.TestCase):

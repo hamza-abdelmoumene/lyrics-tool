@@ -1,7 +1,7 @@
 import unittest
 
-from lrc_tools import visualizer_display as vd
-from lrc_tools.fonts import get_font
+from lyrics_tool import visualizer_display as vd
+from lyrics_tool.fonts import get_font
 
 
 class TestRender(unittest.TestCase):
@@ -58,7 +58,7 @@ class TestIdleScreens(unittest.TestCase):
         self.assertTrue(all(len(r) == 60 for r in rows))
 
     def test_status_notes_keep_visible_width(self):
-        from lrc_tools.effects import NoteField
+        from lyrics_tool.effects import NoteField
         notes = NoteField().positions(60, 18, 3.0)
         frame = vd._render_status(["x"], notes=notes)
         for row in frame.split("\n"):

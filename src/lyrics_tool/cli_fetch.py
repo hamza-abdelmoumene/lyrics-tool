@@ -1,10 +1,12 @@
 """
-LRC Puller CLI - Batch download synchronized lyrics from LRCLIB
+lyricsooo-fetch — batch-download synchronized lyrics from LRCLIB.
 """
 import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
+from .paths import raw_dir
 
 
 def _progress_bar(processed: int, total: int, found: int, errors: int):
@@ -21,12 +23,14 @@ def _progress_bar(processed: int, total: int, found: int, errors: int):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Batch download LRC lyrics from LRCLIB (with syncedlyrics fallback)"
+        prog='lyricsooo-fetch',
+        description="Batch-download LRC lyrics from LRCLIB (with syncedlyrics fallback)",
     )
     parser.add_argument('--audio-dir', type=Path, required=True,
                         help='Directory containing audio files')
-    parser.add_argument('--output-dir', type=Path, required=True,
-                        help='Directory to save .lrc files')
+    parser.add_argument('--output-dir', type=Path, default=None,
+                        help='Directory to save .lrc files '
+                             '(default: ~/.local/share/lyrics-tool/lyrics/raw)')
     parser.add_argument('--search-threads', type=int, default=None,
                         help='Concurrent search threads (default: 5)')
     parser.add_argument('--download-threads', type=int, default=None,
@@ -43,7 +47,7 @@ def main():
     args = parser.parse_args()
 
     audio_dir = args.audio_dir
-    output_dir = args.output_dir
+    output_dir = args.output_dir or raw_dir()
 
     if not audio_dir.exists():
         print(f"Error: audio directory '{audio_dir}' does not exist")

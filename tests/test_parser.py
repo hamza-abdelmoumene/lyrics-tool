@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lrc_tools.parser import (
+from lyrics_tool.parser import (
     parse_lrc,
     parse_lrc_simple,
     write_lrc,

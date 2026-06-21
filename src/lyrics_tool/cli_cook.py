@@ -1,21 +1,26 @@
 """
-LRC Processor CLI - Split and convert LRC files to word-level timing
+lyricsooo-cook — split long phrases and optionally convert LRC to word-level WLRC.
 """
 import argparse
 import sys
 from pathlib import Path
 
+from .paths import raw_dir, processed_dir
+
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Process LRC files: split long phrases and optionally convert to word-level WLRC'
+        prog='lyricsooo-cook',
+        description='Process LRC files: split long phrases and optionally convert to word-level WLRC',
     )
-    parser.add_argument('--lrc-dir', type=Path, required=True,
-                        help='Directory containing input .lrc files')
+    parser.add_argument('--lrc-dir', type=Path, default=None,
+                        help='Directory of input .lrc files '
+                             '(default: ~/.local/share/lyrics-tool/lyrics/raw)')
     parser.add_argument('--audio-dir', type=Path,
                         help='Directory containing audio files (used for duration and onset detection)')
-    parser.add_argument('--output-dir', type=Path, required=True,
-                        help='Directory to write processed files')
+    parser.add_argument('--output-dir', type=Path, default=None,
+                        help='Directory to write processed files '
+                             '(default: ~/.local/share/lyrics-tool/lyrics/processed)')
     parser.add_argument('--wlrc', action='store_true',
                         help='Convert output to word-level WLRC format')
     parser.add_argument('--overwrite', action='store_true',
@@ -39,11 +44,14 @@ def main():
 
     args = parser.parse_args()
 
-    lrc_dir = args.lrc_dir
-    output_dir = args.output_dir
+    lrc_dir = args.lrc_dir or raw_dir()
+    output_dir = args.output_dir or processed_dir()
 
     if not lrc_dir.exists():
-        print(f"Error: LRC directory '{lrc_dir}' does not exist")
+        print(f"Error: input directory '{lrc_dir}' does not exist")
+        if args.lrc_dir is None:
+            print("Nothing to cook yet. Download some lyrics first:")
+            print("  lyricsooo-fetch --audio-dir ~/Music")
         return 1
 
     if args.audio_dir and not args.audio_dir.exists():

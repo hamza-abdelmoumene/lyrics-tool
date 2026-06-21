@@ -1,6 +1,6 @@
 """
 LRC file parsing utilities
-Shared by all tools in the lrc-tools package
+Shared by all tools in the lyrics-tool package
 """
 import re
 from pathlib import Path

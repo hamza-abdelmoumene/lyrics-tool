@@ -1,4 +1,4 @@
-# Contributing to lrc-tools
+# Contributing to lyrics-tool
 
 Thanks for your interest in contributing! Here's how to get started.
 
@@ -22,6 +22,9 @@ source .venv/bin/activate
 # Install in editable mode with dev dependencies
 pip install -e '.[dev]'
 ```
+
+This registers the `lyricsooo`, `lyricsooo-fetch`, and `lyricsooo-cook` commands
+in your virtual environment.
 
 ## Running Tests
 

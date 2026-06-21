@@ -1,6 +1,6 @@
 import unittest
 
-from lrc_tools.processor_main import (
+from lyrics_tool.processor_main import (
     phrases_to_words,
     process_long_phrases,
     count_syllables,
