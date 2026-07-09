@@ -31,24 +31,28 @@ _CONFIG = f"""\
 [general]
 bars = {_N}
 framerate = 60
+autosens = 1
+sensitivity = 130
 [output]
 method = raw
 raw_target = /dev/stdout
 data_format = ascii
 ascii_max_range = {_MAX}
 channels = mono
+mono_option = average
 bar_delimiter = 59
 [smoothing]
-noise_reduction = 30
+noise_reduction = 0.30
 """
 
 
 class Spectrum:
     """Live audio spectrum. ``bars(n)`` returns *n* values in 0..1, or None."""
 
-    def __init__(self, attack: float = 0.55, decay: float = 0.18) -> None:
-        self._attack = attack
-        self._decay = decay
+    def __init__(self, attack: float = 0.85, decay: float = 0.34) -> None:
+        self._attack = attack       # snap up fast
+        self._decay = decay         # fall a little softer (musical gravity)
+        self._peak = 0.15           # decaying reference level for auto-gain
         self._vals: List[float] = [0.0] * _N
         self._smooth: List[float] = [0.0] * _N
         self._proc: Optional[subprocess.Popen] = None
@@ -116,15 +120,22 @@ class Spectrum:
         if m == 0:
             return [0.0] * n
         if n == m:
-            return list(s)
-        # linear resample m -> n
-        out = []
-        for i in range(n):
-            x = i * (m - 1) / (n - 1) if n > 1 else 0.0
-            lo = int(x)
-            hi = min(lo + 1, m - 1)
-            out.append(s[lo] + (s[hi] - s[lo]) * (x - lo))
-        return out
+            out = list(s)
+        else:
+            out = []
+            for i in range(n):
+                x = i * (m - 1) / (n - 1) if n > 1 else 0.0
+                lo = int(x)
+                hi = min(lo + 1, m - 1)
+                out.append(s[lo] + (s[hi] - s[lo]) * (x - lo))
+
+        # Auto-gain: normalise against a slowly-decaying peak so quiet passages
+        # still fill out, then a perceptual curve to lift the low end. cava's raw
+        # levels sit low; without this the bars barely twitch.
+        peak = max(out) if out else 0.0
+        self._peak = max(0.06, peak, self._peak * 0.985)
+        g = self._peak
+        return [min(1.0, (v / g) ** 0.72) for v in out]
 
     def close(self) -> None:
         self._ok = False

@@ -52,8 +52,8 @@ _last_size = None
 # spectrum ring around the inner frame at paint time.
 _BORDER_ON = False
 _BORDER = {"spectrum": None, "color": (220, 200, 120)}
-_MY = 3   # top/bottom band thickness in character rows  (×2 half-block pixels)
-_MX = 6   # left/right band thickness in character cols   (×2 half-block pixels)
+_MY = 4   # top/bottom band thickness in character rows  (×8 eighth-block levels)
+_MX = 7   # left/right band thickness in character cols   (×8 eighth-block levels)
 
 
 def _real_size() -> tuple:
@@ -124,64 +124,66 @@ def _grad(color: RGB, t: float) -> RGB:
     """Bar colour at height ``t`` (0 baseline → 1 tip): dim base → bright toward the tip."""
     r, g, b = color
     t = max(0.0, min(1.0, t))
-    dim = (r * 0.42, g * 0.42, b * 0.42)
-    hot = (r + (255 - r) * 0.55, g + (255 - g) * 0.55, b + (255 - b) * 0.55)
+    dim = (r * 0.5, g * 0.5, b * 0.5)                              # saturated base
+    hot = (r + (255 - r) * 0.7, g + (255 - g) * 0.7, b + (255 - b) * 0.7)  # near-white tips
     return tuple(int(dim[i] + (hot[i] - dim[i]) * t) for i in range(3))
 
 
-def _cell_v(topc, botc) -> str:
-    """A vertical half-block cell: fg = top pixel, bg = bottom pixel (default = off)."""
-    if topc is None and botc is None:
-        return " "
-    if botc is None:
-        return f"\033[38;2;{topc[0]};{topc[1]};{topc[2]}m▀{_RESET}"
-    if topc is None:
-        return f"\033[38;2;{botc[0]};{botc[1]};{botc[2]}m▄{_RESET}"
-    return (f"\033[38;2;{topc[0]};{topc[1]};{topc[2]}m"
-            f"\033[48;2;{botc[0]};{botc[1]};{botc[2]}m▀{_RESET}")
+# Eighth-block ramps → 8 sub-levels per cell, so a 4-cell band shows 32 steps of
+# bar height. Vertical fills from the bottom, horizontal from the left.
+_EIGHTHS_V = " ▁▂▃▄▅▆▇█"
+_EIGHTHS_H = " ▏▎▍▌▋▊▉█"
 
 
-def _cell_h(leftc, rightc) -> str:
-    """A horizontal half-block cell: fg = left pixel, bg = right pixel (default = off)."""
-    if leftc is None and rightc is None:
-        return " "
-    if rightc is None:
-        return f"\033[38;2;{leftc[0]};{leftc[1]};{leftc[2]}m▌{_RESET}"
-    if leftc is None:
-        return f"\033[38;2;{rightc[0]};{rightc[1]};{rightc[2]}m▐{_RESET}"
-    return (f"\033[38;2;{leftc[0]};{leftc[1]};{leftc[2]}m"
-            f"\033[48;2;{rightc[0]};{rightc[1]};{rightc[2]}m▌{_RESET}")
+def _bar_cells(value: float, n: int, color: RGB, reverse: bool, glyphs) -> List[str]:
+    """Render one bar as ``n`` cell-strings, index 0 = the outer (baseline) cell.
+
+    ``reverse`` flips the partial to fill from the far side of the cell (used for
+    the top and right edges, whose bars grow away from a bottom/left-anchored
+    glyph), painted as background so the ink lands on the correct side.
+    """
+    total = max(0.0, min(1.0, value)) * n * 8.0     # height in eighths
+    cells = []
+    for pos in range(n):
+        filled = total - pos * 8.0
+        t = (pos + 0.6) / n                          # colour: dim base → bright tip
+        r, g, b = _grad(color, t)
+        if filled <= 0.0:
+            cells.append(" ")
+        elif filled >= 8.0:
+            cells.append(f"\033[38;2;{r};{g};{b}m{glyphs[8]}{_RESET}")
+        else:
+            e = max(1, min(7, int(filled)))
+            if not reverse:
+                cells.append(f"\033[38;2;{r};{g};{b}m{glyphs[e]}{_RESET}")
+            else:
+                # far-side partial: paint the cell bg with the bar colour and let
+                # the (8-e) glyph's ink cover the empty side in the default colour.
+                cells.append(f"\033[38;2;0;0;0m\033[48;2;{r};{g};{b}m{glyphs[8 - e]}{_RESET}")
+    return cells
 
 
 def _v_band(values, my: int, color: RGB, anchor: str) -> List[str]:
-    """A horizontal spectrum strip (vertical bars). ``anchor`` = outer edge."""
-    P = 2 * my
-    cols_pix = []
-    for v in values:
-        h = int(round(max(0.0, min(1.0, v)) * P))
-        pix = [None] * P
-        for k in range(h):
-            idx = k if anchor == "top" else P - 1 - k
-            pix[idx] = _grad(color, (k + 1) / P)     # brighter toward the centre
-        cols_pix.append(pix)
-    band = []
-    for j in range(my):
-        band.append("".join(_cell_v(p[2 * j], p[2 * j + 1]) for p in cols_pix))
-    return band
+    """A horizontal spectrum strip of vertical bars → ``my`` screen rows (top→bottom)."""
+    reverse = anchor == "top"
+    per_col = [_bar_cells(v, my, color, reverse, _EIGHTHS_V) for v in values]
+    # index 0 is the outer cell: top edge's outer is the top row; bottom's is the
+    # bottom row, so flip its per-column order into screen order.
+    if anchor == "bottom":
+        per_col = [list(reversed(c)) for c in per_col]
+    return ["".join(col[j] for col in per_col) for j in range(my)]
 
 
 def _h_band(values, mx: int, color: RGB, anchor: str) -> List[str]:
-    """A vertical spectrum strip (horizontal bars). ``anchor`` = outer edge."""
-    Q = 2 * mx
-    rows = []
+    """A vertical spectrum strip of horizontal bars → one ``mx``-wide cell per row."""
+    reverse = anchor == "right"
+    out = []
     for v in values:
-        w = int(round(max(0.0, min(1.0, v)) * Q))
-        pix = [None] * Q
-        for k in range(w):
-            idx = k if anchor == "left" else Q - 1 - k
-            pix[idx] = _grad(color, (k + 1) / Q)
-        rows.append("".join(_cell_h(pix[2 * i], pix[2 * i + 1]) for i in range(mx)))
-    return rows
+        cells = _bar_cells(v, mx, color, reverse, _EIGHTHS_H)   # index 0 = outer
+        if anchor == "right":                                   # outer is the right col
+            cells = list(reversed(cells))
+        out.append("".join(cells))
+    return out
 
 
 def _frame_with_border(inner: str, real_cols: int, real_rows: int) -> str:
