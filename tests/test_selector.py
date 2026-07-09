@@ -18,6 +18,30 @@ def test_render_contains_all_options():
         assert word in plain
 
 
+def test_decode_key_handles_arrows_and_letters():
+    d = S._decode_key
+    # arrow escape sequences (both normal and application-cursor variants)
+    assert d(b"\x1b[A") == "up"
+    assert d(b"\x1b[B") == "down"
+    assert d(b"\x1b[C") == "right"
+    assert d(b"\x1b[D") == "left"
+    assert d(b"\x1bOA") == "up"
+    # a lone escape cancels; an unknown sequence is treated as cancel
+    assert d(b"\x1b") == "esc"
+    assert d(b"\x1b[Z") == "esc"
+    # confirm / vim keys / quit
+    assert d(b"\r") == "enter"
+    assert d(b"\n") == "enter"
+    assert d(b" ") == "right"
+    assert d(b"\t") == "down"
+    assert d(b"j") == "down"
+    assert d(b"k") == "up"
+    assert d(b"h") == "left"
+    assert d(b"l") == "right"
+    assert d(b"q") == "esc"
+    assert d(b"") == ""
+
+
 def test_render_marks_active_row():
     frame = S._render(S._FIELDS, sel=[1, 0], cursor=1,
                       accent=S._accent((219, 199, 102)), cols=64, rows=18)

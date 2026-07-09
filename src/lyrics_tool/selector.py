@@ -32,22 +32,36 @@ def _accent(rgb) -> str:
     return f"{_ESC}38;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
 
 
-def _read_key() -> str:
-    """Return a normalised key name from one keypress (raw mode assumed)."""
-    ch = sys.stdin.read(1)
-    if ch == "\x1b":                       # escape or arrow sequence
-        seq = sys.stdin.read(2) if _kbhit() else ""
-        return {"[A": "up", "[B": "down", "[C": "right", "[D": "left"}.get(seq, "esc")
-    return {
-        "\r": "enter", "\n": "enter", " ": "right",
-        "k": "up", "j": "down", "h": "left", "l": "right",
-        "q": "esc", "\x03": "esc",
-    }.get(ch, "")
+_ARROWS = {b"[A": "up", b"[B": "down", b"[C": "right", b"[D": "left",
+           b"OA": "up", b"OB": "down", b"OC": "right", b"OD": "left"}
+_KEYS = {b"\r": "enter", b"\n": "enter", b" ": "right",
+         b"\t": "down", b"k": "up", b"j": "down", b"h": "left", b"l": "right",
+         b"K": "up", b"J": "down", b"H": "left", b"L": "right",
+         b"q": "esc", b"Q": "esc", b"\x03": "esc"}
 
 
-def _kbhit() -> bool:
+def _decode_key(data: bytes) -> str:
+    """Map a raw keypress (possibly a multi-byte escape sequence) to a key name."""
+    if not data:
+        return ""
+    if data[:1] == b"\x1b":
+        # ESC [ A  (or the ESC O A "application cursor" variant some terminals send)
+        return _ARROWS.get(data[1:3], "esc")
+    return _KEYS.get(data[:1], "")
+
+
+def _read_key(fd: int) -> str:
+    """Read one keypress off the raw fd. Reading bytes directly (not via the
+    buffered ``sys.stdin``) is what makes arrow keys work: the whole ``ESC [ A``
+    sequence is delivered in a single ``os.read`` instead of getting split with
+    the tail stuck in Python's stream buffer where ``select`` can't see it."""
     import select
-    return bool(select.select([sys.stdin], [], [], 0.0)[0])
+
+    data = os.read(fd, 8)
+    # If only the lone ESC arrived, give the sequence tail a beat to land.
+    if data == b"\x1b" and select.select([fd], [], [], 0.03)[0]:
+        data += os.read(fd, 8)
+    return _decode_key(data)
 
 
 def _render(fields, sel, cursor, accent: str, cols: int, rows: int) -> str:
@@ -115,7 +129,7 @@ def choose(accent=(219, 199, 102), typewriter=True, wlrc=False) -> Optional[dict
             cols, rows = _termsize()
             out.write("\033[H" + _render(_FIELDS, sel, cursor, acc, cols, rows) + _RESET)
             out.flush()
-            key = _read_key()
+            key = _read_key(fd)
             if key == "up":
                 cursor = (cursor - 1) % len(_FIELDS)
             elif key == "down":
