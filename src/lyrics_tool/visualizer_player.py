@@ -14,11 +14,33 @@ from typing import Optional, Tuple
 # rhythmbox, …) out of the box. Override with ``set_player('spotify')``.
 PLAYER_NAME = None
 
+# Players auto-follow ignores when no explicit ``--player`` is pinned. Browsers
+# publish an MPRIS player for *every* <video> — a YouTube lecture, a course, a
+# background tab — and would yank the lyrics away from the music you're actually
+# playing. Ignoring them by default means auto-detect quietly skips the browser
+# and follows Spotify / a local player instead. Override with ``set_ignored()``
+# (pass '' to follow anything, including browsers).
+DEFAULT_IGNORED_PLAYERS = (
+    'firefox,zen,librewolf,floorp,waterfox,mozilla,'
+    'chromium,chrome,google-chrome,brave,vivaldi,opera,'
+    'microsoft-edge,epiphany,qutebrowser'
+)
+IGNORED_PLAYERS = DEFAULT_IGNORED_PLAYERS
+
 
 def set_player(name):
     """Pin the visualizer to a specific MPRIS player (None = auto-detect)."""
     global PLAYER_NAME
     PLAYER_NAME = name or None
+
+
+def set_ignored(names):
+    """Set the comma-separated player names auto-detect should skip.
+
+    ``None`` keeps the default browser list; ``''`` disables ignoring entirely.
+    """
+    global IGNORED_PLAYERS
+    IGNORED_PLAYERS = DEFAULT_IGNORED_PLAYERS if names is None else names
 
 
 # A single atomic snapshot of the player, read in one playerctl call.
@@ -55,7 +77,11 @@ def _run_playerctl(args: list) -> subprocess.CompletedProcess:
     """Run playerctl with preferred player target and timeout"""
     cmd = ['playerctl']
     if PLAYER_NAME:
+        # An explicit pin wins outright — the user asked for this player.
         cmd.extend(['--player', PLAYER_NAME])
+    elif IGNORED_PLAYERS:
+        # Auto-detect, but never let a browser's <video> hijack the lyrics.
+        cmd.extend(['--ignore-player', IGNORED_PLAYERS])
     cmd.extend(args)
     return subprocess.run(cmd, capture_output=True, text=True, timeout=0.5)
 

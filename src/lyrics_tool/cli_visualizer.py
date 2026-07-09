@@ -49,6 +49,12 @@ def main():
                         help='MPRIS player to follow (e.g. spotify, mpv, vlc). '
                              'Default: auto-detect the active player, so both '
                              'Spotify and local players work out of the box')
+    parser.add_argument('--ignore-player', type=str, default=None, metavar='LIST',
+                        help="Comma-separated MPRIS players auto-detect must never "
+                             "follow. Defaults to web browsers, so a YouTube "
+                             "lecture/course playing in Firefox/Chrome can't hijack "
+                             "the lyrics from your music. Pass '' to follow anything. "
+                             "Ignored when --player pins a specific player.")
     parser.add_argument('--banner-hold', type=float, default=1.5,
                         help='Seconds the settled song-title card stays up on a '
                              'track switch before lyrics take over, timed after '
@@ -87,7 +93,7 @@ def main():
     try:
         from .fonts import get_font, load_fonts_from_json, register_font
         from .visualizer_main import run_visualizer
-        from .visualizer_player import set_player
+        from .visualizer_player import set_player, set_ignored
         from .theme_source import make_color_provider
     except ImportError as e:
         print(f"Error: could not import visualizer modules — {e}")
@@ -95,6 +101,9 @@ def main():
 
     # Follow a specific player, or auto-detect the active one (Spotify/local).
     set_player(args.player)
+    # Skip browsers on auto-detect (default) unless the user customises the list.
+    if args.ignore_player is not None:
+        set_ignored(args.ignore_player)
 
     # Resolve the colour source. Precedence: CLI flag > env var > default 'art'.
     # The env var lets a rice / shell rc pin a system-wide default (e.g.

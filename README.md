@@ -109,6 +109,8 @@ Every command supports `--help`.
   (Album-art tinting needs Pillow; disable all colour with `--no-cover-color`.)
 - **Auto-follow any player** — works with Spotify and local MPRIS players out of
   the box; auto-detects the active one, or pin it with `--player spotify` / `mpv`.
+  Web browsers are skipped by default (a YouTube lecture/course can't hijack the
+  lyrics from your music); customise or disable with `--ignore-player`.
 - **Ad break screen** — when Spotify plays an advert, the lyrics swap to an
   animated *ad break* card — a bored face that cycles with a drifting snooze
   trail over the music notes — then snaps back to the next real track.
