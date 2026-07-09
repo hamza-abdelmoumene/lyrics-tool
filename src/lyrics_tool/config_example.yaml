@@ -50,6 +50,32 @@ visualizer:
   # Clear screen between updates
   clear_screen: true
 
+# Colour source (for lyricsooo) — where the lyric tint and the now-playing
+# card colours come from. This is what keeps the tool portable: the default
+# works everywhere, and desktop-integrated presets are opt-in.
+theme:
+  # One of:
+  #   art        - dominant colour of the album art          (default, portable)
+  #   none       - no colour; terminal default foreground
+  #   pywal      - follow ~/.cache/wal/colors.json           (wal / pywal)
+  #   caelestia  - follow the Caelestia desktop scheme        (Material-You)
+  #   matugen    - follow ~/.cache/matugen/colors.json
+  #   fixed:#RRGGBB  - a single static accent colour
+  #   file:PATH  - follow ANY JSON theme file (see keys below)
+  color_source: "art"
+
+  # For 'file:' (or to override a preset) point at a JSON palette and map
+  # dotted key paths from its root to each colour. Leave null to use the
+  # preset's own mapping. Example for a Material-You style file:
+  #   theme_file: "~/.cache/matugen/colors.json"
+  #   lyric_key:   "colors.primary"
+  #   card_bg_key: "colors.surface_container_high"
+  #   card_fg_key: "colors.on_surface"
+  theme_file: null
+  lyric_key: null
+  card_bg_key: null
+  card_fg_key: null
+
 
 # Example usage:
 # 

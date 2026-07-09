@@ -99,11 +99,14 @@ Every command supports `--help`.
   register instantly even while a download is in flight. While it searches you
   get an animated *finding lyrics* screen; if a song genuinely has none, it
   settles into a calm *no synced lyrics* idle screen instead of freezing.
-- **Cover-tinted UI** — the title card paints the terminal in the album cover's
-  dominant colour (saturated, with text auto-set dark on light covers / light on
-  dark ones), and the lyrics are tinted with a softer, desaturated accent of the
-  same colour so they stay easy on the eyes. (Needs Pillow; disable with
-  `--no-cover-color`.)
+- **Universal colour sources** — by default the title card paints the terminal in
+  the album cover's dominant colour (saturated, with text auto-set dark on light
+  covers / light on dark ones) and tints the lyrics with a softer accent of it.
+  But the colour source is pluggable (`--color-source`, or
+  `$LYRICSOOO_COLOR_SOURCE`): follow your desktop theme instead — `pywal`,
+  `caelestia`, `matugen`, a `fixed:#rrggbb` accent, or `file:PATH` to track *any*
+  JSON palette live. Works on any distro; nothing here is setup-specific.
+  (Album-art tinting needs Pillow; disable all colour with `--no-cover-color`.)
 - **Auto-follow any player** — works with Spotify and local MPRIS players out of
   the box; auto-detects the active one, or pin it with `--player spotify` / `mpv`.
 - **Ad break screen** — when Spotify plays an advert, the lyrics swap to an
@@ -278,7 +281,8 @@ lyricsooo --wlrc                # word mode
 lyricsooo --player spotify      # pin to one player (e.g. spotify, mpv, vlc)
 ```
 
-Useful flags: `--player <name>` to pin a player, `--no-cover-color` /
+Useful flags: `--player <name>` to pin a player, `--color-source <src>` to pick
+where colours come from (see [Colour sources](#colour-sources)), `--no-cover-color` /
 `--no-notes` to strip effects, `--offset <sec>` to nudge sync (positive =
 earlier), `--banner-hold <sec>` to set how long the title card lingers (default
 1.5), `--typewriter` for the character-reveal effect.
@@ -326,9 +330,37 @@ CPU scales with terminal size (more cells → more floating notes) and with
 accumulated). `--no-notes` trims the steady-state CPU further. Numbers are
 approximate and hardware-dependent.
 
+## Colour sources
+
+Where the lyric tint and the now-playing card get their colour is fully
+pluggable, so the tool looks at home on any setup. Pick a source with
+`--color-source` (or set `$LYRICSOOO_COLOR_SOURCE` in your shell rc to pin a
+default system-wide):
+
+| Source | Colours follow | Needs |
+| ------ | -------------- | ----- |
+| `art` *(default)* | the current track's album art | Pillow, a player that exposes art |
+| `none` | terminal default foreground | — |
+| `pywal` | `~/.cache/wal/colors.json` | you already run wal/pywal |
+| `caelestia` | the Caelestia desktop scheme | Caelestia |
+| `matugen` | `~/.cache/matugen/colors.json` | matugen |
+| `fixed:#RRGGBB` | one static accent you choose | — |
+| `file:PATH` | **any** JSON palette (configurable key map) | — |
+
+```bash
+lyricsooo --color-source pywal            # match your wal palette, live
+lyricsooo --color-source caelestia        # match the Caelestia desktop scheme
+lyricsooo --color-source fixed:#89b4fa    # one fixed accent
+export LYRICSOOO_COLOR_SOURCE=pywal       # ...or make it the default everywhere
+```
+
+Theme-file sources update **live** — retheme your desktop and the lyrics
+recolour under your feet, no restart. For a generic `file:` source, map its keys
+in `config.yaml` (dotted paths from the JSON root; see the example file).
+
 ## Configuration
 
-Processing defaults can be set in a YAML file (see
+Processing, visualizer and colour defaults can be set in a YAML file (see
 [`src/lyrics_tool/config_example.yaml`](src/lyrics_tool/config_example.yaml)) and
 passed with `--config path/to/config.yaml`. CLI flags override the file.
 

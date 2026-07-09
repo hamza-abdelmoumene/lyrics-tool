@@ -31,8 +31,18 @@ def main():
                              'built-in lead: positive shows lyrics earlier, '
                              'negative later (default: 0)')
     parser.add_argument('--no-cover-color', action='store_true',
-                        help='Disable tinting the song-name card with the '
-                             'album cover colour')
+                        help='Disable all colour tinting (card + lyrics); use '
+                             'the terminal default foreground')
+    parser.add_argument('--color-source', type=str, default=None,
+                        metavar='SOURCE',
+                        help="Where lyric/card colours come from: 'art' "
+                             "(album-art tint, default), 'none', a desktop "
+                             "preset ('pywal', 'caelestia', 'matugen'), "
+                             "'fixed:#rrggbb', or 'file:PATH' for any JSON "
+                             "theme. Also settable via $LYRICSOOO_COLOR_SOURCE")
+    parser.add_argument('--theme-file', type=Path, default=None,
+                        help='Override the JSON theme file path for the '
+                             'chosen preset / file colour source')
     parser.add_argument('--no-notes', action='store_true',
                         help='Disable the floating music notes behind lyrics')
     parser.add_argument('--player', type=str, default=None,
@@ -78,12 +88,22 @@ def main():
         from .fonts import get_font, load_fonts_from_json, register_font
         from .visualizer_main import run_visualizer
         from .visualizer_player import set_player
+        from .theme_source import make_color_provider
     except ImportError as e:
         print(f"Error: could not import visualizer modules — {e}")
         return 1
 
     # Follow a specific player, or auto-detect the active one (Spotify/local).
     set_player(args.player)
+
+    # Resolve the colour source. Precedence: CLI flag > env var > default 'art'.
+    # The env var lets a rice / shell rc pin a system-wide default (e.g.
+    #   export LYRICSOOO_COLOR_SOURCE=pywal) without touching every launch.
+    import os
+    cover_color = not args.no_cover_color
+    source = args.color_source or os.environ.get('LYRICSOOO_COLOR_SOURCE') or 'art'
+    theme_file = str(args.theme_file) if args.theme_file else None
+    color_provider = make_color_provider(source, theme_file=theme_file) if cover_color else None
 
     # Load custom fonts if provided
     if args.custom_fonts:
@@ -100,6 +120,8 @@ def main():
     print("Starting LRC visualizer...")
     print(f"LRC directory: {lrc_dir}")
     print(f"Font: {args.font}")
+    if cover_color:
+        print(f"Colour source: {source}")
     print("Press Ctrl+C to exit")
     print()
 
@@ -111,10 +133,11 @@ def main():
             font_data=font_data,
             refresh_rate=args.refresh_rate,
             sync_offset=args.offset,
-            cover_color=not args.no_cover_color,
+            cover_color=cover_color,
             notes=not args.no_notes,
             banner_hold=args.banner_hold,
             typewriter=typewriter,
+            color_provider=color_provider,
         )
     except KeyboardInterrupt:
         print("\nExiting...")

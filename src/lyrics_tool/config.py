@@ -31,6 +31,22 @@ class VisualizerConfig:
 
 
 @dataclass
+class ThemeConfig:
+    """Where the visualizer sources its lyric/card colours.
+
+    ``color_source`` is any spec understood by ``theme_source.make_color_provider``
+    ('art', 'none', 'pywal', 'caelestia', 'matugen', 'fixed:#rrggbb',
+    'file:PATH'). For a generic theme file the ``*_key`` fields are dotted paths
+    from the JSON root (e.g. 'colours.primary') so any palette format works.
+    """
+    color_source: str = "art"
+    theme_file: Optional[str] = None
+    lyric_key: Optional[str] = None
+    card_bg_key: Optional[str] = None
+    card_fg_key: Optional[str] = None
+
+
+@dataclass
 class PullerConfig:
     """Configuration for LRC puller"""
     search_threads: int = 5          # Concurrent search threads
@@ -49,6 +65,7 @@ class Config:
     def __init__(self, config_file: Optional[Path] = None):
         self.processor = ProcessorConfig()
         self.visualizer = VisualizerConfig()
+        self.theme = ThemeConfig()
         self.puller = PullerConfig()
 
         if config_file and config_file.exists():
@@ -75,6 +92,11 @@ class Config:
                 if hasattr(self.visualizer, key):
                     setattr(self.visualizer, key, value)
 
+        if 'theme' in data:
+            for key, value in data['theme'].items():
+                if hasattr(self.theme, key):
+                    setattr(self.theme, key, value)
+
         if 'puller' in data:
             for key, value in data['puller'].items():
                 if hasattr(self.puller, key):
@@ -85,6 +107,7 @@ class Config:
         data = {
             'processor': asdict(self.processor),
             'visualizer': asdict(self.visualizer),
+            'theme': asdict(self.theme),
             'puller': asdict(self.puller),
         }
 
@@ -101,6 +124,7 @@ class Config:
         return {
             'processor': asdict(self.processor),
             'visualizer': asdict(self.visualizer),
+            'theme': asdict(self.theme),
             'puller': asdict(self.puller),
         }
 
@@ -117,6 +141,11 @@ class Config:
             for key, value in data['visualizer'].items():
                 if hasattr(config.visualizer, key):
                     setattr(config.visualizer, key, value)
+
+        if 'theme' in data:
+            for key, value in data['theme'].items():
+                if hasattr(config.theme, key):
+                    setattr(config.theme, key, value)
 
         if 'puller' in data:
             for key, value in data['puller'].items():

@@ -232,6 +232,7 @@ def run_visualizer(
     notes: bool = True,
     banner_hold: float = 1.5,
     typewriter: bool = False,
+    color_provider=None,
 ):
     """Run the LRC visualizer main loop.
 
@@ -255,7 +256,7 @@ def run_visualizer(
     )
     from .parser import parse_lrc_simple
     from .audio import find_lrc_for_audio
-    from .cover import cover_colors, lyric_accent, vivid, text_color
+    from .theme_source import make_color_provider, NullColorProvider
     from .effects import NoteField
 
     # Effective head-start: built-in buffer compensation + user offset.
@@ -273,31 +274,13 @@ def run_visualizer(
     # tiny value still shows a readable title.
     BANNER_HOLD = max(0.45, banner_hold)
 
-    def _resolve_colors():
-        """Fetch (card_bg, card_fg, lyric_color) for the current art, off-thread.
-
-        The image download must never block the announce, so this runs in a
-        daemon thread; the holder is polled after the glitch (by when it's
-        usually done, especially on the cached replay path).
-        """
-        holder = {'done': False, 'card_bg': None, 'card_fg': None, 'lyric': None}
-
-        def work():
-            try:
-                colors = cover_colors(get_art_url())
-                if colors:
-                    raw_bg = colors[0]
-                    holder['card_bg'] = vivid(raw_bg)
-                    holder['card_fg'] = text_color(holder['card_bg'])
-                    holder['lyric'] = lyric_accent(raw_bg)
-            except Exception:
-                pass
-            finally:
-                holder['done'] = True
-
-        th = threading.Thread(target=work, daemon=True)
-        th.start()
-        return holder, th
+    # Where colours come from. Default 'art' = portable album-art tint; the CLI
+    # may inject any other source (pywal / caelestia / a JSON theme file) via
+    # ``color_provider``. ``--no-cover-color`` forces colours off entirely.
+    if not cover_color:
+        color_provider = NullColorProvider()
+    elif color_provider is None:
+        color_provider = make_color_provider('art')
 
     hide_cursor()
     clear_screen()
@@ -330,7 +313,10 @@ def run_visualizer(
         # Album-cover accent the current track's lyrics are painted in (None =
         # default terminal colour, e.g. cover_color off or art/Pillow missing).
         lyric_color = None
-        color_holder = None   # off-thread cover-colour result for the current track
+        # Card + lyric colours for the current track, filled by the colour
+        # provider (album art off-thread, or a live theme file). Any field may
+        # stay None, meaning "use the terminal default".
+        color_holder = {'card_bg': None, 'card_fg': None, 'lyric': None}
         fetch_holder = None   # off-thread on-the-fly lyric fetch for the current track
         steady_until = 0.0    # monotonic instant the settled title card may hand off
         idle_phase = 0        # animation tick for the waiting / ad / searching screens
@@ -342,12 +328,26 @@ def run_visualizer(
             cols, rows = get_terminal_size()
             return note_field.positions(cols, rows, time.monotonic())
 
-        def _pick_lyric_color():
-            """Adopt the cover accent the instant the off-thread fetch lands."""
+        def _sync_colors():
+            """Pull the latest colours from the provider into the holders.
+
+            Returns True when the lyric tint changed, so the caller can force a
+            repaint. Cheap to call every frame: album-art is a resolved-flag
+            check; theme files are an mtime-gated stat.
+            """
             nonlocal lyric_color
-            if lyric_color is None and color_holder is not None and color_holder['done']:
-                if color_holder['lyric'] is not None:
-                    lyric_color = color_holder['lyric']
+            c = color_provider.current()
+            if c is None:
+                return False
+            changed = c.lyric is not None and c.lyric != lyric_color
+            if c.lyric is not None:
+                lyric_color = c.lyric
+                color_holder['lyric'] = c.lyric
+            if c.card_bg is not None:
+                color_holder['card_bg'] = c.card_bg
+            if c.card_fg is not None:
+                color_holder['card_fg'] = c.card_fg
+            return changed
 
         def _start_bg_fetch(artist, title):
             """Kick the on-the-fly lyric fetch onto a daemon thread.
@@ -414,7 +414,7 @@ def run_visualizer(
             while time.monotonic() < steady_until and sync_data.running:
                 if _track_changed(title):
                     return False
-                _pick_lyric_color()
+                _sync_colors()
                 time.sleep(0.05)
             return True
 
@@ -432,7 +432,7 @@ def run_visualizer(
                     return 'changed'
                 if fetch_holder is not None and fetch_holder['done']:
                     return 'fetched'
-                _pick_lyric_color()
+                _sync_colors()
                 if time.monotonic() >= steady_until:  # card hold done → animate
                     display_searching(title, _notes_now(), lyric_color, idle_phase)
                     idle_phase += 1
@@ -449,7 +449,7 @@ def run_visualizer(
             while sync_data.running:
                 if _track_changed(title):
                     return
-                _pick_lyric_color()
+                _sync_colors()
                 display_no_lyrics(title, _notes_now(), lyric_color)
                 idle_phase += 1
                 time.sleep(0.12)
@@ -491,13 +491,15 @@ def run_visualizer(
                 last_title = title
                 sync_data.current_title = None
                 fetch_holder = None
-                color_holder = _resolve_colors()[0] if cover_color else None
-                lyric_color = color_holder['lyric'] if color_holder else None
+                lyric_color = None
+                color_holder['card_bg'] = color_holder['card_fg'] = color_holder['lyric'] = None
+                color_provider.on_track(get_art_url() if cover_color else None)
+                _sync_colors()  # continuous sources (theme files) land instantly
                 display_now_playing_glitch(artist, title, font_data)
                 display_now_playing(
                     artist, title, font_data,
-                    bg=color_holder['card_bg'] if color_holder else None,
-                    fg=color_holder['card_fg'] if color_holder else None,
+                    bg=color_holder['card_bg'],
+                    fg=color_holder['card_fg'],
                 )
                 steady_until = time.monotonic() + BANNER_HOLD
 
@@ -596,14 +598,10 @@ def run_visualizer(
                 tq = None
                 if note_field is not None:
                     tq = int(time.monotonic() / NOTE_DT)
-                # Pick up the cover colour the moment the off-thread fetch lands
-                # (so the card could appear before the download finished without
-                # the lyrics missing their tint).
-                if lyric_color is None and color_holder is not None and color_holder['done']:
-                    new_color = color_holder['lyric']
-                    if new_color is not None:
-                        lyric_color = new_color
-                        last_text = None  # force a repaint in the new colour
+                # Pick up colours the moment they change — the album-art fetch
+                # landing, or a live desktop-theme switch under our feet.
+                if _sync_colors():
+                    last_text = None  # force a repaint in the new colour
 
                 # In typewriter mode the visible portion changes every tick,
                 # so we compare the display string rather than the source text.
