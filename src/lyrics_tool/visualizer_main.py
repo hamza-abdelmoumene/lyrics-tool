@@ -233,6 +233,7 @@ def run_visualizer(
     banner_hold: float = 1.5,
     typewriter: bool = False,
     color_provider=None,
+    cava: bool = False,
 ):
     """Run the LRC visualizer main loop.
 
@@ -281,6 +282,19 @@ def run_visualizer(
         color_provider = NullColorProvider()
     elif color_provider is None:
         color_provider = make_color_provider('art')
+
+    # Optional reactive spectrum frame (cava) drawn around the lyrics. Degrades
+    # to nothing if cava isn't installed; the border colour follows the lyric tint.
+    from .visualizer_display import enable_border, disable_border, set_border_color
+    spectrum = None
+    cava_on = False
+    if cava:
+        from .spectrum import Spectrum, cava_available
+        if cava_available():
+            spectrum = Spectrum()
+            _c = color_provider.current()
+            enable_border(spectrum, _c.lyric if (_c and _c.lyric) else (220, 200, 120))
+            cava_on = True
 
     hide_cursor()
     clear_screen()
@@ -602,11 +616,13 @@ def run_visualizer(
                 # landing, or a live desktop-theme switch under our feet.
                 if _sync_colors():
                     last_text = None  # force a repaint in the new colour
+                    if cava_on:
+                        set_border_color(lyric_color)
 
                 # In typewriter mode the visible portion changes every tick,
                 # so we compare the display string rather than the source text.
                 cmp_text = tw_display if typewriter else text
-                if cmp_text != last_text or tq != last_tq:
+                if cmp_text != last_text or tq != last_tq or cava_on:
                     last_text, last_tq = cmp_text, tq
                     if note_field is not None:
                         cols, rows = get_terminal_size()
@@ -626,5 +642,9 @@ def run_visualizer(
         pass
     finally:
         sync_data.running = False
+        if cava_on:
+            disable_border()
+        if spectrum is not None:
+            spectrum.close()
         show_cursor()
         clear_screen()

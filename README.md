@@ -86,6 +86,13 @@ Every command supports `--help`.
 - **Zero-config defaults** — all three commands share a standard data directory,
   so the common workflow needs no path flags.
 - **Typewriter mode** — progressive character reveal with a blinking cursor.
+- **Reactive spectrum frame** — with `--cava`, a live audio equaliser wraps the
+  lyrics on all four edges: bars rise inward toward the words, tinted to match the
+  active colour and brightening at their tips. Needs the `cava` command; silently
+  skipped without it.
+- **Pick before you play** — `--select` opens a small, theme-tinted picker to
+  choose the reveal **effect** (typewriter / standard) and **style** (phrase /
+  word) up front, keyboard-driven; falls back to defaults with no TTY.
 - **On-the-beat timing** — a built-in lead cancels the player's reported-position
   buffer lag and paint latency, so lines land *with* the vocal, not behind it.
   Tune further with `--offset` (positive = earlier).
@@ -283,11 +290,12 @@ lyricsooo --wlrc                # word mode
 lyricsooo --player spotify      # pin to one player (e.g. spotify, mpv, vlc)
 ```
 
-Useful flags: `--player <name>` to pin a player, `--color-source <src>` to pick
-where colours come from (see [Colour sources](#colour-sources)), `--no-cover-color` /
-`--no-notes` to strip effects, `--offset <sec>` to nudge sync (positive =
-earlier), `--banner-hold <sec>` to set how long the title card lingers (default
-1.5), `--typewriter` for the character-reveal effect.
+Useful flags: `--player <name>` to pin a player, `--select` for the interactive
+effect/style picker, `--cava` for the reactive spectrum frame, `--color-source <src>`
+to pick where colours come from (see [Colour sources](#colour-sources)),
+`--no-cover-color` / `--no-notes` to strip effects, `--offset <sec>` to nudge sync
+(positive = earlier), `--banner-hold <sec>` to set how long the title card lingers
+(default 1.5), `--typewriter` for the character-reveal effect.
 
 Optional shell aliases (the defaults already make these short, but if you like):
 

@@ -45,6 +45,10 @@ def main():
                              'chosen preset / file colour source')
     parser.add_argument('--no-notes', action='store_true',
                         help='Disable the floating music notes behind lyrics')
+    parser.add_argument('--cava', action='store_true',
+                        help='Draw a live audio-spectrum equaliser framing the '
+                             'lyrics on all four edges (reacts to what is playing). '
+                             'Requires the `cava` command; silently skipped if absent.')
     parser.add_argument('--player', type=str, default=None,
                         help='MPRIS player to follow (e.g. spotify, mpv, vlc). '
                              'Default: auto-detect the active player, so both '
@@ -63,16 +67,18 @@ def main():
                         help='Typewriter effect: progressively reveal each '
                              'lyric line character by character (phrase-level '
                              'mode only; ignored with --wlrc)')
+    parser.add_argument('--select', action='store_true',
+                        help='Interactive picker before starting: choose the '
+                             'effect (typewriter/standard) and style (phrase/word).')
     parser.add_argument('--config', type=Path,
                         help='Path to config.yaml')
 
     args = parser.parse_args()
 
+    # Effect/style may be set by flags now and overridden by the --select picker
+    # once the colour source is known (so the card is themed). Resolved below.
     typewriter = args.typewriter
-    if typewriter and args.wlrc:
-        print('Warning: --typewriter is ignored in word-level mode (--wlrc)',
-              file=sys.stderr)
-        typewriter = False
+    wlrc = args.wlrc
 
     # Resolve the lyrics directory. With no --lrc-dir we use the shared default
     # location and create it if missing, so a fresh install runs immediately:
@@ -126,6 +132,16 @@ def main():
 
     font_data = get_font(args.font)
 
+    # Optional interactive picker (themed with the resolved colour source).
+    if args.select:
+        from .selector import choose
+        _c = color_provider.current() if color_provider is not None else None
+        accent = _c.lyric if (_c and _c.lyric) else (219, 199, 102)
+        picks = choose(accent, typewriter=typewriter, wlrc=wlrc)
+        typewriter, wlrc = picks['typewriter'], picks['wlrc']
+    if typewriter and wlrc:
+        typewriter = False  # typewriter is a phrase-mode reveal; word mode wins
+
     print("Starting LRC visualizer...")
     print(f"LRC directory: {lrc_dir}")
     print(f"Font: {args.font}")
@@ -138,7 +154,7 @@ def main():
         run_visualizer(
             lrc_dir=lrc_dir,
             audio_dir=args.audio_dir,
-            is_wlrc=args.wlrc,
+            is_wlrc=wlrc,
             font_data=font_data,
             refresh_rate=args.refresh_rate,
             sync_offset=args.offset,
@@ -147,6 +163,7 @@ def main():
             banner_hold=args.banner_hold,
             typewriter=typewriter,
             color_provider=color_provider,
+            cava=args.cava,
         )
     except KeyboardInterrupt:
         print("\nExiting...")

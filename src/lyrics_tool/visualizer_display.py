@@ -44,18 +44,174 @@ _last_frame = None
 _last_size = None
 
 
-def get_terminal_size() -> tuple:
-    """
-    Get terminal dimensions.
-    
-    Returns:
-        Tuple of (columns, rows)
-    """
+# ── reactive spectrum border ────────────────────────────────────────────────
+# An optional cava-driven equaliser framing the lyrics on all four edges. The
+# trick that keeps it non-invasive: when a border is active, get_terminal_size()
+# reports the *inner* box, so every renderer (lyrics, cards, idle screens)
+# centres itself inside the frame with zero changes — and _paint() draws the
+# spectrum ring around the inner frame at paint time.
+_BORDER_ON = False
+_BORDER = {"spectrum": None, "color": (220, 200, 120)}
+_MY = 3   # top/bottom band thickness in character rows  (×2 half-block pixels)
+_MX = 6   # left/right band thickness in character cols   (×2 half-block pixels)
+
+
+def _real_size() -> tuple:
     try:
-        size = os.get_terminal_size()
-        return size.columns, size.lines
+        s = os.get_terminal_size()
+        return s.columns, s.lines
     except Exception:
-        return 80, 24  # Default fallback
+        return 80, 24
+
+
+def _border_active() -> bool:
+    """Border on *and* the terminal is big enough to hold it comfortably."""
+    if not _BORDER_ON:
+        return False
+    c, r = _real_size()
+    return c >= 2 * _MX + 16 and r >= 2 * _MY + 6
+
+
+def get_terminal_size() -> tuple:
+    """Terminal size — the *inner* box when a spectrum border is active."""
+    c, r = _real_size()
+    if _border_active():
+        return c - 2 * _MX, r - 2 * _MY
+    return c, r
+
+
+def enable_border(spectrum, color: RGB) -> None:
+    """Turn on the reactive spectrum frame, driven by ``spectrum`` (see spectrum.py)."""
+    global _BORDER_ON, _last_frame
+    _BORDER["spectrum"] = spectrum
+    _BORDER["color"] = color
+    _BORDER_ON = True
+    _last_frame = None
+
+
+def set_border_color(color: RGB) -> None:
+    if color is not None:
+        _BORDER["color"] = color
+
+
+def disable_border() -> None:
+    global _BORDER_ON, _last_frame
+    _BORDER_ON = False
+    _BORDER["spectrum"] = None
+    _last_frame = None
+
+
+def border_enabled() -> bool:
+    return _BORDER_ON
+
+
+def _resample(arr, n: int):
+    m = len(arr)
+    if n <= 0 or m == 0:
+        return [0.0] * max(0, n)
+    if n == m:
+        return list(arr)
+    out = []
+    for i in range(n):
+        x = i * (m - 1) / (n - 1) if n > 1 else 0.0
+        lo = int(x)
+        hi = min(lo + 1, m - 1)
+        out.append(arr[lo] + (arr[hi] - arr[lo]) * (x - lo))
+    return out
+
+
+def _grad(color: RGB, t: float) -> RGB:
+    """Bar colour at height ``t`` (0 baseline → 1 tip): dim base → bright toward the tip."""
+    r, g, b = color
+    t = max(0.0, min(1.0, t))
+    dim = (r * 0.42, g * 0.42, b * 0.42)
+    hot = (r + (255 - r) * 0.55, g + (255 - g) * 0.55, b + (255 - b) * 0.55)
+    return tuple(int(dim[i] + (hot[i] - dim[i]) * t) for i in range(3))
+
+
+def _cell_v(topc, botc) -> str:
+    """A vertical half-block cell: fg = top pixel, bg = bottom pixel (default = off)."""
+    if topc is None and botc is None:
+        return " "
+    if botc is None:
+        return f"\033[38;2;{topc[0]};{topc[1]};{topc[2]}m▀{_RESET}"
+    if topc is None:
+        return f"\033[38;2;{botc[0]};{botc[1]};{botc[2]}m▄{_RESET}"
+    return (f"\033[38;2;{topc[0]};{topc[1]};{topc[2]}m"
+            f"\033[48;2;{botc[0]};{botc[1]};{botc[2]}m▀{_RESET}")
+
+
+def _cell_h(leftc, rightc) -> str:
+    """A horizontal half-block cell: fg = left pixel, bg = right pixel (default = off)."""
+    if leftc is None and rightc is None:
+        return " "
+    if rightc is None:
+        return f"\033[38;2;{leftc[0]};{leftc[1]};{leftc[2]}m▌{_RESET}"
+    if leftc is None:
+        return f"\033[38;2;{rightc[0]};{rightc[1]};{rightc[2]}m▐{_RESET}"
+    return (f"\033[38;2;{leftc[0]};{leftc[1]};{leftc[2]}m"
+            f"\033[48;2;{rightc[0]};{rightc[1]};{rightc[2]}m▌{_RESET}")
+
+
+def _v_band(values, my: int, color: RGB, anchor: str) -> List[str]:
+    """A horizontal spectrum strip (vertical bars). ``anchor`` = outer edge."""
+    P = 2 * my
+    cols_pix = []
+    for v in values:
+        h = int(round(max(0.0, min(1.0, v)) * P))
+        pix = [None] * P
+        for k in range(h):
+            idx = k if anchor == "top" else P - 1 - k
+            pix[idx] = _grad(color, (k + 1) / P)     # brighter toward the centre
+        cols_pix.append(pix)
+    band = []
+    for j in range(my):
+        band.append("".join(_cell_v(p[2 * j], p[2 * j + 1]) for p in cols_pix))
+    return band
+
+
+def _h_band(values, mx: int, color: RGB, anchor: str) -> List[str]:
+    """A vertical spectrum strip (horizontal bars). ``anchor`` = outer edge."""
+    Q = 2 * mx
+    rows = []
+    for v in values:
+        w = int(round(max(0.0, min(1.0, v)) * Q))
+        pix = [None] * Q
+        for k in range(w):
+            idx = k if anchor == "left" else Q - 1 - k
+            pix[idx] = _grad(color, (k + 1) / Q)
+        rows.append("".join(_cell_h(pix[2 * i], pix[2 * i + 1]) for i in range(mx)))
+    return rows
+
+
+def _frame_with_border(inner: str, real_cols: int, real_rows: int) -> str:
+    """Wrap an inner (inset-sized) frame in a live spectrum ring."""
+    mx, my = _MX, _MY
+    iw, ih = real_cols - 2 * mx, real_rows - 2 * my
+    color = _BORDER["color"]
+    spec = _BORDER["spectrum"]
+    base = spec.bars(128) if spec is not None else None
+    if not base:
+        base = [0.0] * 128
+
+    top = _resample(base, iw)
+    bottom = list(reversed(top))                 # mirror for rotational symmetry
+    left = _resample(base, ih)
+    right = list(reversed(left))
+
+    top_band = _v_band(top, my, color, "top")
+    bot_band = _v_band(bottom, my, color, "bottom")
+    left_col = _h_band(left, mx, color, "left")
+    right_col = _h_band(right, mx, color, "right")
+
+    inner_lines = inner.split("\n")
+    corner = " " * mx
+    out = [corner + top_band[j] + corner for j in range(my)]
+    for r in range(ih):
+        line = inner_lines[r] if r < len(inner_lines) else " " * iw
+        out.append(left_col[r] + line + right_col[r])
+    out += [corner + bot_band[j] + corner for j in range(my)]
+    return "\n".join(out)
 
 
 def clear_screen():
@@ -465,9 +621,13 @@ def _paint(frame: str, clear: bool):
     explicit clear or a terminal resize, where a one-shot clear avoids artifacts.
     """
     global _last_frame, _last_size
-    size = get_terminal_size()
-    resized = size != _last_size
-    _last_size = size
+    real_cols, real_rows = _real_size()
+    resized = (real_cols, real_rows) != _last_size
+    _last_size = (real_cols, real_rows)
+
+    # Wrap the (inner) frame in the live spectrum ring when the border is on.
+    if _border_active():
+        frame = _frame_with_border(frame, real_cols, real_rows)
 
     if frame == _last_frame and not clear and not resized:
         return
