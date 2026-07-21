@@ -1,0 +1,67 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! Please fill in the details
+        below so it can be reproduced. For security issues, follow SECURITY.md
+        instead of opening a public issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+      placeholder: The lyrics run ~1s ahead of the vocals on Spotify…
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact command(s) you ran and what you did.
+      placeholder: |
+        1. Started Spotify playing "…"
+        2. Ran `lyricsooo --reveal glow`
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: lyrics-tool version
+      description: "Output of `pip show lyrics-tool` (or the git commit)."
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - Windows
+        - macOS
+        - WSL
+    validations:
+      required: true
+  - type: input
+    id: backend
+    attributes:
+      label: Player backend & player
+      description: "The 'Player backend' line from the startup banner, plus which player (Spotify, mpv, …)."
+      placeholder: "playerctl · Spotify"
+  - type: input
+    id: env
+    attributes:
+      label: Python version & terminal
+      placeholder: "Python 3.12, Kitty"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Any error message or traceback (will be formatted as code).
+      render: shell

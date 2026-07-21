@@ -7,18 +7,20 @@
 [![CI](https://github.com/hamza-abdelmoumene/lyrics-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/hamza-abdelmoumene/lyrics-tool/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)](#installation)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg)](#platform-support)
 
 </div>
 
-`lyrics-tool` is a small suite that **fetches** synced lyrics, **prepares** them
-into phrase- or word-level timing, and **renders** them live in the terminal as
-block letters, synchronized to whatever your media player is playing (via
-`playerctl` / MPRIS).
+`lyrics-tool` is a small, cross-platform suite that **fetches** synced lyrics,
+**prepares** them into phrase- or word-level timing, and **renders** them live
+in the terminal as block letters, synchronized to whatever your media player is
+playing.
 
-Works with **Spotify** and with **local players** (mpv, VLC, rhythmbox, and any
-other MPRIS-capable player) — the visualizer auto-follows whatever is currently
-playing, or pin it with `--player`.
+It follows your player natively on **Linux** (MPRIS / `playerctl`), **Windows**
+(System Media Transport Controls) and **macOS** (`nowplaying-cli`) — one code
+path, one snapshot, the right backend picked automatically for your OS. Works
+with **Spotify** and any local player (mpv, VLC, rhythmbox, Apple Music, …);
+auto-follows whatever is playing, or pin it with `--player`.
 
 ---
 
@@ -28,13 +30,16 @@ playing, or pin it with `--player`.
 - [The three commands](#the-three-commands)
 - [Previews](#previews)
 - [Features](#features)
+- [Platform support](#platform-support)
 - [Installation](#installation)
-- [How your lyrics are stored](#how-your-lyrics-are-stored)
+- [Player backends](#player-backends)
+- [Colour sources](#colour-sources)
 - [Usage](#usage)
+- [How your lyrics are stored](#how-your-lyrics-are-stored)
+- [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 - [Footprint](#footprint)
-- [Configuration](#configuration)
-- [Development](#development)
+- [Development & contributing](#development--contributing)
 - [Uninstall](#uninstall)
 
 ---
@@ -42,8 +47,8 @@ playing, or pin it with `--player`.
 ## Quick start
 
 Once installed (see [Installation](#installation)), there is **nothing to
-configure** — every command falls back to a shared default location under
-`~/.local/share/lyrics-tool/`, so the whole flow works with zero flags:
+configure** — every command falls back to a shared default location under your
+data directory, so the whole flow works with zero flags:
 
 ```bash
 lyricsooo-fetch --audio-dir ~/Music   # 1. download synced lyrics for your library
@@ -72,284 +77,178 @@ Every command supports `--help`.
 
 ## Previews
 
+> Rendered straight from the real engine — regenerate any time with
+> `python tools/generate_previews.py`.
+
 | Feature & Description | Visual Preview |
 | :--- | :--- |
-| **Terminal Lyrics Visualizer** <br><br> The core visualizer rendering block-letter lyrics in the terminal. Features custom fonts, dynamic resizing, and real-time player synchronization. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/image-preview.gif" width="450" alt="Terminal Lyric Visualizer" /> |
-| **Phrase-Level Playback** <br><br> Seamlessly tracks playing songs line-by-line, matching vocal delivery exactly. Uses a custom timing offset to eliminate player lag. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/song-phrase-preview.gif" width="450" alt="Phrase-level lyric rendering & visualizer" /> |
-| **Smooth Glitch Transitions** <br><br> A high-performance scrambler effect that triggers on track change, rendering a scrambled/glitched text banner before resolving into the album info card. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/switching-preview.gif" width="450" alt="Smooth track switching glitch & banner" /> |
-| **Dynamic Color Tinting** <br><br> Extracts the dominant vibrant color from the album artwork, adapting the terminal background and lyric colors to fit the song's aesthetic. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/colors-preview.png" width="450" alt="Dynamic cover-art color-tinted theme" /> |
-| **Animated Ad-Break Screen** <br><br> Automatically detects when Spotify or local players play an advertisement, displaying an animated idle card and resuming lyrics immediately on the next song. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/ads-preview.gif" width="450" alt="Animated ad break screen" /> |
+| **Terminal Lyrics Visualizer** <br><br> The core visualizer rendering block-letter lyrics in the terminal. Custom fonts, dynamic resizing, ambient floating notes, and real-time player synchronization. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/image-preview.gif" width="450" alt="Terminal lyric visualizer" /> |
+| **Phrase-Level Playback** <br><br> Tracks the playing song line by line, matching vocal delivery. A phase-locked clock cancels player lag so lines land *with* the vocal. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/song-phrase-preview.gif" width="450" alt="Phrase-level lyric rendering" /> |
+| **Glitch Track Announce** <br><br> Every track change opens with a short glitch burst — band tears, scrambling letters, chromatic flicker — that resolves into the album info card. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/switching-preview.gif" width="450" alt="Glitch track switching" /> |
+| **Dynamic Colour Tinting** <br><br> Extracts the dominant colour from the album artwork and tints the now-playing card and lyrics to match the song — or follow your desktop theme instead. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/colors-preview.png" width="450" alt="Album-art colour tinting" /> |
+| **Animated Ad-Break Screen** <br><br> Detects when Spotify plays an advertisement and shows an animated idle card, resuming lyrics immediately on the next song. | <img src="https://raw.githubusercontent.com/hamza-abdelmoumene/lyrics-tool/main/assets/ads-preview.gif" width="450" alt="Animated ad break screen" /> |
 
 ## Features
 
+- **Cross-platform live sync** — follows your player on Linux, Windows and macOS
+  through one pluggable backend layer; the right one is auto-selected. See
+  [Platform support](#platform-support).
 - **Phrase and word-level sync** — `.lrc` (per line) and `.wlrc` (per word).
-- **Zero-config defaults** — all three commands share a standard data directory,
-  so the common workflow needs no path flags.
-- **Typewriter mode** — progressive character reveal with a blinking cursor.
-- **Reactive spectrum frame** — with `--cava`, a live audio equaliser wraps the
-  lyrics on all four edges: bars rise inward toward the words, tinted to match the
-  active colour and brightening at their tips. Needs the `cava` command; silently
-  skipped without it.
-- **Pick before you play** — `--select` opens a small, theme-tinted picker to
-  choose the reveal **effect** (typewriter / standard) and **style** (phrase /
-  word) up front, keyboard-driven; falls back to defaults with no TTY.
-- **On-the-beat timing** — a built-in lead cancels the player's reported-position
-  buffer lag and paint latency, so lines land *with* the vocal, not behind it.
-  Tune further with `--offset` (positive = earlier).
-- **Glitch track announce** — every track switch opens with a short glitch burst
-  (band tears, scrambling letters, chromatic flicker) that resolves into the
-  song-name card. The settled card is held for a guaranteed window (`--banner-hold`,
-  default 1.5s, timed *after* the glitch) so it never flashes past, then hands
-  off to the lyrics.
-- **Never blocks on the network** — lyrics for the playing track are fetched on
-  the fly in the background, so the display stays responsive and track switches
-  register instantly even while a download is in flight. While it searches you
-  get an animated *finding lyrics* screen; if a song genuinely has none, it
-  settles into a calm *no synced lyrics* idle screen instead of freezing.
-- **Universal colour sources** — by default the title card paints the terminal in
-  the album cover's dominant colour (saturated, with text auto-set dark on light
-  covers / light on dark ones) and tints the lyrics with a softer accent of it.
-  But the colour source is pluggable (`--color-source`, or
-  `$LYRICSOOO_COLOR_SOURCE`): follow your desktop theme instead — `pywal`,
-  `caelestia`, `matugen`, a `fixed:#rrggbb` accent, or `file:PATH` to track *any*
-  JSON palette live. Works on any distro; nothing here is setup-specific.
-  (Album-art tinting needs Pillow; disable all colour with `--no-cover-color`.)
-- **Auto-follow any player** — works with Spotify and local MPRIS players out of
-  the box; auto-detects the active one, or pin it with `--player spotify` / `mpv`.
-  Web browsers are skipped by default (a YouTube lecture/course can't hijack the
-  lyrics from your music); customise or disable with `--ignore-player`.
-- **Ad break screen** — when Spotify plays an advert, the lyrics swap to an
-  animated *ad break* card — a bored face that cycles with a drifting snooze
-  trail over the music notes — then snaps back to the next real track.
-- **Floating music notes** — ambient notes drift up the screen behind the
-  lyrics, the idle screens, and the ad card. Disable with `--no-notes`.
-- **Responsive renderer** — block letters wrap across rows to fit the terminal,
-  and fall back to plain wrapped text when the window is too small. Resizes live.
-- **Diff rendering** — repaints only when the line, notes, or terminal size
-  change, so a held line costs ~no CPU and never flickers.
-- **Offline word mode** — if no `.wlrc` exists, word timing is derived in-memory
-  from the cached `.lrc` (no network round-trip).
-- **Custom fonts** — supply your own block-letter font via JSON.
+- **On-the-beat timing** — a phase-locked playback clock continuously eases onto
+  the player's timeline and cancels reported-position lag, so lines land *with*
+  the vocal, not behind it. Nudge live with `-`/`+` (saved), or set `--offset`.
+- **Four line-reveal effects** — `standard` (instant), `typewriter`
+  (char-by-char with a blinking cursor), `fade` (soft per-line fade-in) and
+  `glow` (the active line gently breathes). Pick with `--reveal`, or open the
+  themed **`--select`** picker to choose effect + style before you play.
+- **Never blocks on the network** — lyrics for the playing track are fetched in
+  the background, so the display stays responsive and track switches register
+  instantly. An animated *finding lyrics* screen shows while it searches; a calm
+  *no synced lyrics* screen if a song genuinely has none.
+- **Universal colour sources** — by default the card is painted in the album
+  cover's dominant colour and the lyrics tinted with a softer accent, but the
+  source is pluggable (`--color-source`): follow `pywal`, `caelestia`, `matugen`,
+  a `fixed:#rrggbb` accent, or `file:PATH` to track *any* JSON palette live.
+- **Auto-follow any player** — Spotify and local players out of the box; pin with
+  `--player spotify`/`mpv`. Web browsers are skipped by default so a YouTube
+  lecture can't hijack the lyrics (`--ignore-player` to customise).
+- **Glitch track announce** + **ad-break screen** + **floating music notes** —
+  ambient polish that keeps the view alive; disable with `--no-notes`.
+- **Responsive, diffed renderer** — block letters wrap to fit and fall back to
+  plain text when the window is tiny; repaints only when something changes, so a
+  held line costs ~no CPU and never flickers.
+- **Offline word mode** and **custom fonts** (supply your own block font via JSON).
+
+## Platform support
+
+| Platform | Live visualizer (`lyricsooo`) | Offline tools (`-fetch` / `-cook`) | Backend |
+| -------- | :---------------------------: | :--------------------------------: | ------- |
+| **Linux / BSD** | ✅ full (art + local files) | ✅ | `playerctl` (MPRIS) |
+| **Windows 10/11** | ✅ | ✅ | `smtc` (System Media Transport Controls, `[windows]` extra) |
+| **macOS** | ✅¹ | ✅ | `nowplaying-cli` |
+| **WSL** | ✅ (as Linux) | ✅ | `playerctl` |
+
+The backend is auto-detected; override with `--player-backend` or
+`$LYRICSOOO_PLAYER_BACKEND`. A truecolor, UTF-8 terminal is recommended
+everywhere (Kitty, Alacritty, WezTerm, Windows Terminal, iTerm2, …); on Windows
+the console is switched into ANSI/VT mode automatically.
+
+> ¹ macOS live sync depends on the `nowplaying-cli` helper; on macOS 15.4+ Apple
+> restricted the underlying framework, so availability can vary by OS version and
+> player. Album-art tinting is Linux-only (it needs a player-exposed art URL) —
+> on Windows/macOS use a theme colour source such as `--color-source fixed:#…`.
 
 ## Installation
 
-### Prerequisites
+### Universal — works on every OS and distro
 
-| Requirement | Why | Notes |
-| ----------- | --- | ----- |
-| **Python ≥ 3.9** | runs the suite | `python3 --version` |
-| **`pipx`** | clean isolated install | recommended over bare `pip` |
-| **`playerctl`** | live player sync (the visualizer) | Linux / WSL only |
-| **`ffmpeg`** (`ffprobe`) | read audio durations when processing | optional but recommended |
-| **truecolor terminal + UTF-8** | block letters & cover tinting | Kitty, Alacritty, WezTerm, GNOME Terminal, Windows Terminal, … |
+`lyrics-tool` is a pure-Python package, so [`pipx`][pipx] (or [`uv`][uv]) is the
+simplest install anywhere:
 
-> `Pillow` (album-cover colour extraction) is installed automatically as a
-> Python dependency — no system package needed.
+```bash
+# From PyPI (recommended)
+pipx install lyrics-tool
+#   …or with uv:
+uv tool install lyrics-tool
 
----
+# Latest from GitHub, no release needed
+pipx install "git+https://github.com/hamza-abdelmoumene/lyrics-tool.git"
+```
 
-### Linux — full native support
+Then open a new terminal and run `lyricsooo --help`. The `lyricsooo`,
+`lyricsooo-fetch`, and `lyricsooo-cook` commands are now on your `PATH`.
 
-Linux is the primary platform. Both the offline CLI utilities and the live
-visualizer work out of the box.
+[pipx]: https://pipx.pypa.io/
+[uv]: https://docs.astral.sh/uv/
 
-**Step 1 — system dependencies**
+### Optional system dependencies
+
+Only needed for the corresponding feature; the tool degrades gracefully without
+them.
 
 <details open>
-<summary><strong>Ubuntu / Debian</strong></summary>
+<summary><strong>Linux</strong> — live sync + audio durations</summary>
 
 ```bash
-sudo apt update
-sudo apt install -y playerctl ffmpeg pipx
-pipx ensurepath          # adds ~/.local/bin to your PATH
+# Debian / Ubuntu
+sudo apt install -y playerctl ffmpeg pipx && pipx ensurepath
+# Arch
+sudo pacman -S --needed playerctl ffmpeg python-pipx && pipx ensurepath
+# Fedora
+sudo dnf install -y playerctl ffmpeg pipx && pipx ensurepath
 ```
-> On Ubuntu 22.04 or older, `pipx` may be unavailable via apt. Install it with
-> `python3 -m pip install --user pipx && python3 -m pipx ensurepath` instead.
+`playerctl` powers the live visualizer; `ffmpeg` (`ffprobe`) reads audio
+durations when processing.
 </details>
 
 <details>
-<summary><strong>Arch Linux</strong></summary>
+<summary><strong>Windows</strong> — native live sync</summary>
 
-```bash
-sudo pacman -S --needed playerctl ffmpeg python-pipx
-pipx ensurepath
-```
-</details>
-
-<details>
-<summary><strong>Fedora</strong></summary>
-
-```bash
-sudo dnf install -y playerctl ffmpeg pipx
-pipx ensurepath
-```
-</details>
-
-**Step 2 — install lyrics-tool**
-
-```bash
-git clone https://github.com/hamza-abdelmoumene/lyrics-tool.git
-cd lyrics-tool
-pipx install .
-```
-
-**Step 3 — open a new terminal** (so the updated `PATH` from `pipx ensurepath`
-takes effect), then verify:
-
-```bash
-lyricsooo --help
-```
-
-You should see the help for the visualizer. The commands `lyricsooo`,
-`lyricsooo-fetch`, and `lyricsooo-cook` are now on your `PATH`.
-
-> **Optional — high-accuracy word timing.** Per-word onset detection uses
-> `librosa`. It's heavy, so it's an opt-in extra:
-> ```bash
-> pipx install '.[onset]'
-> ```
-
----
-
-### macOS — CLI tools only (no live sync)
-
-`lyricsooo-fetch` and `lyricsooo-cook` work fully, but macOS has no MPRIS, so the
-live visualizer `lyricsooo` **cannot** follow local players.
-
-```bash
-brew install ffmpeg pipx
-pipx ensurepath
-git clone https://github.com/hamza-abdelmoumene/lyrics-tool.git
-cd lyrics-tool
-pipx install .
-```
-
----
-
-### Windows
-
-**Recommended — WSL (full support).** Inside WSL (Ubuntu/Arch/…) you get the full
-visualizer:
+Install the System Media Transport Controls backend with the `[windows]` extra:
 
 ```powershell
-wsl --install        # then open your WSL distro and follow the Linux steps above
+pipx install "lyrics-tool[windows]"
+# or from source:  pipx install ".[windows]"
 ```
 
-Make sure your media player is reachable from the WSL session.
+That pulls in `winsdk`. No `playerctl` needed — it reads Windows' global media
+session directly. WSL users can instead follow the Linux steps for the full
+MPRIS experience.
+</details>
 
-**Native Windows — CLI tools only.** No MPRIS, so no live visualizer:
-
-1. Install Python (tick *"Add Python to PATH"*).
-2. Install `ffmpeg` and add it to your `PATH`.
-3. From the cloned project folder: `pip install .`
-4. Use `lyricsooo-fetch` and `lyricsooo-cook` to download and prepare lyrics.
-
----
-
-### Editable / development install
+<details>
+<summary><strong>macOS</strong> — live sync helper</summary>
 
 ```bash
+brew install nowplaying-cli      # enables live sync
+brew install ffmpeg              # optional, for audio durations
+pipx install lyrics-tool
+```
+</details>
+
+### Distro packages
+
+| Method | Command |
+| ------ | ------- |
+| **Arch (AUR)** | see [`packaging/aur/PKGBUILD`](packaging/aur/PKGBUILD) — `makepkg -si` |
+| **Homebrew** | tap + `brew install lyrics-tool` — see [`packaging/homebrew`](packaging/homebrew/lyrics-tool.rb) |
+
+### From source (development)
+
+```bash
+git clone https://github.com/hamza-abdelmoumene/lyrics-tool.git
+cd lyrics-tool
 pip install -e '.[dev]'
 ```
 
-> **Upgrading from an early build?** Cover colours need Pillow. If your pipx
-> install predates that dependency, refresh it once with
-> `pipx reinstall lyrics-tool` (or `pipx inject lyrics-tool Pillow`).
+> **Optional — high-accuracy word timing.** Per-word onset detection uses
+> `librosa` (heavy, opt-in): `pipx install 'lyrics-tool[onset]'`.
 
-## How your lyrics are stored
+## Player backends
 
-Unless you pass explicit `--*-dir` flags, everything lives under one root
-(honouring `$XDG_DATA_HOME`):
-
-```
-~/.local/share/lyrics-tool/
-└── lyrics/
-    ├── raw/         # lyricsooo-fetch downloads here  →  also lyricsooo-cook's input
-    └── processed/   # lyricsooo-cook writes here      →  lyricsooo reads here
-```
-
-The visualizer also caches lyrics it fetches on the fly into `processed/`. These
-directories are **created automatically** the first time they're needed — you
-never have to `mkdir` anything.
-
-## Usage
-
-The zero-flag flow (see [Quick start](#quick-start)) covers most uses. Full form
-with explicit directories:
+`lyricsooo` reads the active player through the backend that fits your OS. It's
+picked automatically, but you can force one:
 
 ```bash
-# 1. Fetch lyrics for your library
-lyricsooo-fetch --audio-dir ~/Music
-
-# 2. Prepare: split long phrases (add --wlrc for word-level)
-lyricsooo-cook --no-require-audio
-
-# 3. Visualize, synced to the current track (auto-follows the active player)
-lyricsooo                       # phrase mode
-lyricsooo --wlrc                # word mode
-lyricsooo --player spotify      # pin to one player (e.g. spotify, mpv, vlc)
+lyricsooo --player-backend playerctl        # Linux / MPRIS
+lyricsooo --player-backend smtc             # Windows media session
+lyricsooo --player-backend nowplaying-cli   # macOS
+export LYRICSOOO_PLAYER_BACKEND=smtc        # …or pin it in your shell rc
 ```
 
-Useful flags: `--player <name>` to pin a player, `--select` for the interactive
-effect/style picker, `--cava` for the reactive spectrum frame, `--color-source <src>`
-to pick where colours come from (see [Colour sources](#colour-sources)),
-`--no-cover-color` / `--no-notes` to strip effects, `--offset <sec>` to nudge sync
-(positive = earlier), `--banner-hold <sec>` to set how long the title card lingers
-(default 1.5), `--typewriter` for the character-reveal effect.
-
-Optional shell aliases (the defaults already make these short, but if you like):
-
-```sh
-alias lyrics="lyricsooo"                               # phrase mode, full effects
-alias lyrics-word="lyricsooo --wlrc"                   # word mode
-alias lyrics-typewriter="lyricsooo --typewriter"       # typewriter effect
-alias lyrics-plain="lyricsooo --no-cover-color --no-notes"  # bare, no tint/notes
-```
-
-Press `Ctrl+C` to exit the visualizer.
-
-## Troubleshooting
-
-| Symptom | Cause & fix |
-| ------- | ----------- |
-| `lyricsooo: command not found` | `pipx`'s bin dir isn't on your `PATH`. Run `pipx ensurepath`, then **open a new terminal**. |
-| `Error: LRC directory … does not exist` | You passed an explicit `--lrc-dir` that doesn't exist (typo). Drop the flag to use the default, or create/point at a real folder. Running `lyricsooo` with **no** `--lrc-dir` creates the default directory for you. |
-| Lyrics don't move / no sync | The visualizer needs `playerctl` and a running MPRIS player. Check `playerctl metadata` returns something; try pinning with `--player spotify`. |
-| `no synced lyrics` for a track | That song has no synced lyrics on LRCLIB. Nothing to fix — playback continues normally. |
-| Block letters look like boxes / no colour | Use a truecolor, UTF-8 terminal (Kitty, Alacritty, WezTerm, …). |
-| Cover tint missing | `Pillow` not installed — `pipx inject lyrics-tool Pillow`. |
-| `ffprobe: not found` when processing | Install `ffmpeg`, or run `lyricsooo-cook --no-require-audio` to skip duration lookups. |
-
-## Footprint
-
-It's light — a sleep-driven loop, not a busy renderer. The diff renderer only
-repaints when the lyric line, the notes, or the terminal size actually change,
-and playback position is extrapolated from the monotonic clock instead of
-polling the player every frame.
-
-Measured on Linux / CPython 3.14, one `lyricsooo` process during continuous
-playback (lyrics flipping + floating notes):
-
-| Metric | Idle / paused | 80×24 terminal | Large terminal (≈200×50) |
-| ------ | ------------- | -------------- | ------------------------ |
-| Memory (RSS) | ~30 MiB | ~33 MiB | ~33 MiB |
-| CPU | ~0% | ~1% of one core | ~3% of one core |
-
-CPU scales with terminal size (more cells → more floating notes) and with
-`--refresh-rate`; memory is flat (lyrics and cover colours are cached, not
-accumulated). `--no-notes` trims the steady-state CPU further. Numbers are
-approximate and hardware-dependent.
+The active backend is shown in the startup banner. If your platform has no
+backend available, the offline `lyricsooo-fetch` / `lyricsooo-cook` tools still
+work and the visualizer shows its idle screen with a hint. Adding a new platform
+is a self-contained change — see [CONTRIBUTING](CONTRIBUTING.md#adding-a-player-backend).
 
 ## Colour sources
 
-Where the lyric tint and the now-playing card get their colour is fully
-pluggable, so the tool looks at home on any setup. Pick a source with
-`--color-source` (or set `$LYRICSOOO_COLOR_SOURCE` in your shell rc to pin a
-default system-wide):
+Where the lyric tint and now-playing card get their colour is fully pluggable.
+Pick a source with `--color-source` (or set `$LYRICSOOO_COLOR_SOURCE`):
 
 | Source | Colours follow | Needs |
 | ------ | -------------- | ----- |
-| `art` *(default)* | the current track's album art | Pillow, a player that exposes art |
+| `art` *(default)* | the current track's album art | Pillow + a player that exposes art (Linux) |
 | `none` | terminal default foreground | — |
 | `pywal` | `~/.cache/wal/colors.json` | you already run wal/pywal |
 | `caelestia` | the Caelestia desktop scheme | Caelestia |
@@ -359,14 +258,51 @@ default system-wide):
 
 ```bash
 lyricsooo --color-source pywal            # match your wal palette, live
-lyricsooo --color-source caelestia        # match the Caelestia desktop scheme
-lyricsooo --color-source fixed:#89b4fa    # one fixed accent
-export LYRICSOOO_COLOR_SOURCE=pywal       # ...or make it the default everywhere
+lyricsooo --color-source fixed:#89b4fa    # one fixed accent (great on Win/macOS)
+export LYRICSOOO_COLOR_SOURCE=caelestia   # …or make it the default everywhere
 ```
 
-Theme-file sources update **live** — retheme your desktop and the lyrics
-recolour under your feet, no restart. For a generic `file:` source, map its keys
-in `config.yaml` (dotted paths from the JSON root; see the example file).
+Theme-file sources update **live** — retheme your desktop and the lyrics recolour
+under your feet, no restart.
+
+## Usage
+
+```bash
+# 1. Fetch lyrics for your library
+lyricsooo-fetch --audio-dir ~/Music
+
+# 2. Prepare: split long phrases (add --wlrc for word-level)
+lyricsooo-cook --no-require-audio
+
+# 3. Visualize, synced to the current track
+lyricsooo                       # phrase mode
+lyricsooo --wlrc                # word mode
+lyricsooo --reveal glow         # breathing active line
+lyricsooo --player spotify      # pin to one player
+lyricsooo --select              # pick effect + style interactively
+```
+
+Useful flags: `--player <name>` to pin a player, `--player-backend <name>` to
+force a backend, `--reveal {standard,typewriter,fade,glow}`, `--select` for the
+picker, `--color-source <src>`, `--no-cover-color` / `--no-notes` to strip
+effects, `--offset <sec>` to nudge sync (positive = earlier), `--banner-hold
+<sec>` for the title-card dwell. Press `Ctrl+C` to exit.
+
+## How your lyrics are stored
+
+Unless you pass explicit `--*-dir` flags, everything lives under one root
+(honouring `$XDG_DATA_HOME`, or the platform equivalent):
+
+```
+~/.local/share/lyrics-tool/
+└── lyrics/
+    ├── raw/         # lyricsooo-fetch downloads here  →  lyricsooo-cook's input
+    └── processed/   # lyricsooo-cook writes here      →  lyricsooo reads here
+```
+
+Live-nudged sync offsets are kept separately under `~/.local/state/lyrics-tool/`.
+These directories are **created automatically** — you never have to `mkdir`
+anything.
 
 ## Configuration
 
@@ -374,33 +310,64 @@ Processing, visualizer and colour defaults can be set in a YAML file (see
 [`src/lyrics_tool/config_example.yaml`](src/lyrics_tool/config_example.yaml)) and
 passed with `--config path/to/config.yaml`. CLI flags override the file.
 
-## Development
+## Troubleshooting
+
+| Symptom | Cause & fix |
+| ------- | ----------- |
+| `lyricsooo: command not found` | Your `pipx`/`uv` bin dir isn't on `PATH`. Run `pipx ensurepath`, then **open a new terminal**. |
+| "no live-sync backend available" note | Install the backend for your OS: `playerctl` (Linux), `pipx install 'lyrics-tool[windows]'` (Windows), `brew install nowplaying-cli` (macOS). |
+| Lyrics don't move / no sync | A player must be running. Check the startup banner's backend line; try pinning with `--player spotify`. |
+| `no synced lyrics` for a track | That song has no synced lyrics on LRCLIB — playback continues normally. |
+| Block letters look like boxes / no colour | Use a truecolor, UTF-8 terminal (Kitty, Alacritty, WezTerm, Windows Terminal, iTerm2, …). |
+| Cover tint missing on Windows/macOS | Album-art tinting is Linux-only; use `--color-source fixed:#RRGGBB` or a theme source instead. |
+| `ffprobe: not found` when processing | Install `ffmpeg`, or run `lyricsooo-cook --no-require-audio` to skip duration lookups. |
+
+## Footprint
+
+It's light — a sleep-driven loop, not a busy renderer. The diff renderer only
+repaints when the lyric line, the notes, or the terminal size actually change,
+and playback position is extrapolated from the monotonic clock instead of polling
+the player every frame.
+
+Measured on Linux / CPython 3.14, one `lyricsooo` process during continuous
+playback:
+
+| Metric | Idle / paused | 80×24 terminal | Large terminal (≈200×50) |
+| ------ | ------------- | -------------- | ------------------------ |
+| Memory (RSS) | ~30 MiB | ~33 MiB | ~33 MiB |
+| CPU | ~0% | ~1% of one core | ~3% of one core |
+
+CPU scales with terminal size and `--refresh-rate`; memory is flat. `--no-notes`
+trims steady-state CPU further. Numbers are approximate and hardware-dependent.
+
+## Development & contributing
 
 ```bash
 pip install -e '.[dev]'
-python -m pytest            # or: python -m unittest discover -s tests
-ruff check src tests        # lint
+pytest                       # full suite — no playerctl, audio, or network needed
+ruff check .                 # lint
+mypy src                     # types (informational)
 ```
 
-Tests cover the pure logic (parsing, phrase→word conversion, rendering, the
-ambient note field) and the visualizer loop itself — driven with a stubbed
-player so it asserts track announces, graceful no-lyrics handling, and that a
-slow lyric fetch never blocks the display. Everything runs without `playerctl`,
-audio, or network.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow.
+The test suite drives the visualizer loop with a stubbed player and unit-tests
+every OS backend through fakes, so it runs identically on Linux, Windows and
+macOS. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full workflow and how
+to add a player backend, **[SECURITY.md](SECURITY.md)** for the security model
+and reporting, and **[CHANGELOG.md](CHANGELOG.md)** for release notes. By
+participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Uninstall
 
 ```bash
 pipx uninstall lyrics-tool
-rm -rf ~/.local/share/lyrics-tool      # remove cached lyrics (optional)
+rm -rf ~/.local/share/lyrics-tool ~/.local/state/lyrics-tool   # cached lyrics (optional)
 ```
 
 ## Credits
 
-Forked from `tacos-terminal-lyrics`; restructured into an installable package
-with a responsive/diffed renderer, offline word-mode, and a test suite.
+Forked from `tacos-terminal-lyrics`; restructured into an installable,
+cross-platform package with a pluggable backend layer, a responsive/diffed
+renderer, offline word-mode, and a test suite.
 
 ## License
 
