@@ -1,266 +1,68 @@
+"""Now-playing facade — one stable API over the per-OS player backends.
+
+The visualizer only imports *this* module; it never touches an OS media API
+directly. Underneath, :func:`lyrics_tool.players.select_backend` picks the right
+:class:`~lyrics_tool.players.PlayerBackend` for the host (MPRIS/``playerctl`` on
+Linux, SMTC on Windows, ``nowplaying-cli`` on macOS), so the same loop, sync
+clock and tests work everywhere.
 """
-Media player integration using playerctl
-Handles communication with media players via MPRIS
-"""
-import subprocess
-import time
-from collections import namedtuple
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Optional, Tuple
 
+from .players import NowPlaying, backend_names, is_ad, select_backend
 
-# Which MPRIS player to read. ``None`` = auto: let playerctl pick the active
-# player, so the visualizer works with Spotify *and* local players (mpv, VLC,
-# rhythmbox, …) out of the box. Override with ``set_player('spotify')``.
-PLAYER_NAME = None
+# Kept as an alias for backwards compatibility: existing code and tests
+# construct/annotate ``PlayerState`` — it is exactly the cross-platform snapshot.
+PlayerState = NowPlaying
 
-# Players auto-follow ignores when no explicit ``--player`` is pinned. Browsers
-# publish an MPRIS player for *every* <video> — a YouTube lecture, a course, a
-# background tab — and would yank the lyrics away from the music you're actually
-# playing. Ignoring them by default means auto-detect quietly skips the browser
-# and follows Spotify / a local player instead. Override with ``set_ignored()``
-# (pass '' to follow anything, including browsers).
-DEFAULT_IGNORED_PLAYERS = (
-    'firefox,zen,librewolf,floorp,waterfox,mozilla,'
-    'chromium,chrome,google-chrome,brave,vivaldi,opera,'
-    'microsoft-edge,epiphany,qutebrowser'
-)
-IGNORED_PLAYERS = DEFAULT_IGNORED_PLAYERS
+__all__ = [
+    "PlayerState", "is_ad", "backend_names", "backend_name", "set_backend",
+    "set_player", "set_ignored", "get_state", "get_art_url",
+    "get_audio_file_info", "get_track_full",
+]
+
+# The active backend, chosen once at import from the platform + environment.
+_backend = select_backend()
 
 
-def set_player(name):
-    """Pin the visualizer to a specific MPRIS player (None = auto-detect)."""
-    global PLAYER_NAME
-    PLAYER_NAME = name or None
+def set_backend(name: Optional[str]) -> None:
+    """Force a specific backend by name (see ``lyrics_tool.players.backend_names``)."""
+    global _backend
+    _backend = select_backend(name)
 
 
-def set_ignored(names):
-    """Set the comma-separated player names auto-detect should skip.
-
-    ``None`` keeps the default browser list; ``''`` disables ignoring entirely.
-    """
-    global IGNORED_PLAYERS
-    IGNORED_PLAYERS = DEFAULT_IGNORED_PLAYERS if names is None else names
+def backend_name() -> str:
+    """Name of the backend currently in use (e.g. ``'playerctl'``, ``'smtc'``)."""
+    return _backend.name
 
 
-# A single atomic snapshot of the player, read in one playerctl call.
-# ``sampled_at`` is the monotonic-clock midpoint of that call, so the display
-# loop can compensate for query latency and stay frame-accurate.
-PlayerState = namedtuple(
-    'PlayerState',
-    ['status', 'position', 'artist', 'title', 'album', 'duration', 'trackid',
-     'sampled_at'],
-)
-
-_STATE_FORMAT = (
-    '{{status}}|||{{position}}|||{{artist}}|||{{title}}|||'
-    '{{album}}|||{{mpris:length}}|||{{mpris:trackid}}'
-)
+def set_player(name: Optional[str]) -> None:
+    """Pin the visualizer to a specific player (``None`` = auto-detect)."""
+    _backend.set_player(name)
 
 
-def is_ad(state) -> bool:
-    """True when the snapshot is a Spotify advertisement rather than a track.
-
-    Spotify free tags ad ``mpris:trackid`` with an ``:ad:``/``/ad/`` segment;
-    that's the reliable signal. A blank artist with a generic ad title is kept
-    as a backup. Other players never match, so local playback is unaffected.
-    """
-    if state is None:
-        return False
-    tid = (state.trackid or '').lower()
-    if ':ad:' in tid or '/ad/' in tid:
-        return True
-    return not state.artist and (state.title or '').lower() in ('advertisement', 'spotify')
-
-
-def _run_playerctl(args: list) -> subprocess.CompletedProcess:
-    """Run playerctl with preferred player target and timeout"""
-    cmd = ['playerctl']
-    if PLAYER_NAME:
-        # An explicit pin wins outright — the user asked for this player.
-        cmd.extend(['--player', PLAYER_NAME])
-    elif IGNORED_PLAYERS:
-        # Auto-detect, but never let a browser's <video> hijack the lyrics.
-        cmd.extend(['--ignore-player', IGNORED_PLAYERS])
-    cmd.extend(args)
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=0.5)
+def set_ignored(names: Optional[str]) -> None:
+    """Set players auto-detect should skip (backend-specific; may be a no-op)."""
+    _backend.set_ignored(names)
 
 
 def get_state() -> Optional[PlayerState]:
-    """Read the player's full state in a single playerctl call.
-
-    Collapsing status, position and metadata into one subprocess (instead of
-    the three separate calls used before) cuts per-tick overhead ~3x and —
-    crucially for clean track switches — samples the position and the title
-    from the *same* MPRIS snapshot, so a song change can no longer race a stale
-    position left over from the previous track.
-
-    In ``metadata --format`` playerctl reports position/length in microseconds,
-    so both are converted to seconds. Returns None when nothing is playing or
-    the output can't be parsed.
-    """
-    try:
-        t0 = time.monotonic()
-        result = _run_playerctl(['metadata', '--format', _STATE_FORMAT])
-        t1 = time.monotonic()
-    except Exception:
-        return None
-
-    if result.returncode != 0:
-        return None
-
-    parts = result.stdout.strip().split('|||')
-    if len(parts) != 7:
-        return None
-
-    status, pos_us, artist, title, album, length_us, trackid = parts
-
-    def _to_seconds(value: str) -> Optional[float]:
-        value = value.strip()
-        if not value:
-            return None
-        try:
-            return float(value) / 1_000_000
-        except ValueError:
-            return None
-
-    position = _to_seconds(pos_us)
-    # Ads have no usable title; let them through (title may be blank) so the
-    # display loop can show the ad screen. Real tracks still need a title.
-    ad = ':ad:' in (trackid or '').lower() or '/ad/' in (trackid or '').lower()
-    if position is None or (not title and not ad):
-        return None
-
-    return PlayerState(
-        status=status or None,
-        position=position,
-        artist=artist,
-        title=title,
-        album=album or None,
-        duration=_to_seconds(length_us),
-        trackid=trackid or None,
-        sampled_at=(t0 + t1) / 2,
-    )
-
-
-def get_position() -> Optional[float]:
-    """
-    Get current playback position in seconds.
-    
-    Returns:
-        Current position in seconds, or None if unavailable
-    """
-    try:
-        result = _run_playerctl(['position'])
-        return float(result.stdout.strip()) if result.returncode == 0 else None
-    except Exception:
-        return None
-
-
-def get_track() -> Optional[Tuple[str, str]]:
-    """
-    Get currently playing track information.
-    
-    Returns:
-        Tuple of (artist, title), or None if unavailable
-    """
-    try:
-        result = _run_playerctl(['metadata', '--format', '{{artist}}|||{{title}}'])
-        if result.returncode == 0:
-            parts = result.stdout.strip().split('|||')
-            return (parts[0], parts[1]) if len(parts) == 2 else None
-    except Exception:
-        return None
-
-
-def get_track_full() -> Optional[Tuple[str, str, Optional[str], Optional[float]]]:
-    """
-    Get rich track metadata in a single playerctl call.
-
-    Returns:
-        (artist, title, album, duration_seconds) or None. album/duration may be
-        None when the player doesn't expose them. Used for exact LRCLIB lookups.
-    """
-    try:
-        result = _run_playerctl(
-            ['metadata', '--format', '{{artist}}|||{{title}}|||{{album}}|||{{mpris:length}}']
-        )
-        if result.returncode == 0:
-            parts = result.stdout.strip().split('|||')
-            if len(parts) == 4:
-                artist, title, album, length = parts
-                duration = int(length) / 1_000_000 if length.isdigit() else None
-                return (artist, title, album or None, duration)
-    except Exception:
-        return None
-    return None
+    """One atomic snapshot of the active player, or ``None`` when nothing plays."""
+    return _backend.snapshot()
 
 
 def get_art_url() -> Optional[str]:
-    """Get the album-art URL the player exposes for the current track.
-
-    Spotify publishes an ``https://i.scdn.co/...`` URL via ``mpris:artUrl``;
-    local players may publish a ``file://`` path. Returns None when absent.
-    """
-    try:
-        result = _run_playerctl(['metadata', '--format', '{{mpris:artUrl}}'])
-        if result.returncode == 0:
-            url = result.stdout.strip()
-            return url or None
-    except Exception:
-        pass
-    return None
-
-
-def get_status() -> Optional[str]:
-    """
-    Get current playback status.
-    
-    Returns:
-        Status string ('Playing', 'Paused', 'Stopped'), or None if unavailable
-    """
-    try:
-        result = _run_playerctl(['status'])
-        return result.stdout.strip() if result.returncode == 0 else None
-    except Exception:
-        return None
+    """Cover-art URL/path for the current track, or ``None`` if unavailable."""
+    return _backend.art_url()
 
 
 def get_audio_file_info() -> Optional[Path]:
-    """
-    Get currently playing audio file path.
-    
-    Returns:
-        Path to audio file, or None if unavailable
-    """
-    try:
-        result = _run_playerctl(['metadata', '--format', '{{xesam:url}}'])
-        if result.returncode == 0:
-            url = result.stdout.strip()
-            if url.startswith('file://'):
-                return Path(url[7:])
-    except Exception:
-        pass
-    return None
+    """Local file backing the current track, or ``None`` for streamed audio."""
+    return _backend.audio_file()
 
 
-def is_paused() -> bool:
-    """
-    Check if playback is currently paused.
-    
-    Returns:
-        True if paused, False otherwise
-    """
-    status = get_status()
-    return status == 'Paused' if status else False
-
-
-def is_playing() -> bool:
-    """
-    Check if playback is currently active.
-    
-    Returns:
-        True if playing, False otherwise
-    """
-    status = get_status()
-    return status == 'Playing' if status else False
+def get_track_full() -> Optional[Tuple[str, str, Optional[str], Optional[float]]]:
+    """``(artist, title, album, duration)`` for an exact LRCLIB lookup, or ``None``."""
+    return _backend.track_full()

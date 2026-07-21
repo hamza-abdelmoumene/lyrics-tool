@@ -9,9 +9,13 @@ from .paths import processed_dir, ensure_dir
 
 
 def main():
+    from .keyinput import enable_ansi
+    enable_ansi()  # switch the Windows console into VT mode (no-op elsewhere)
+
     parser = argparse.ArgumentParser(
         prog='lyricsooo',
-        description='Live terminal lyrics visualizer with playerctl/MPRIS sync',
+        description='Live terminal lyrics visualizer synced to your player '
+                    '(MPRIS/playerctl · Windows SMTC · macOS nowplaying-cli)',
     )
     parser.add_argument('--lrc-dir', type=Path, default=None,
                         help='Directory of LRC files to display '
@@ -27,9 +31,11 @@ def main():
     parser.add_argument('--refresh-rate', type=float, default=0.05,
                         help='Display refresh rate in seconds (default: 0.05)')
     parser.add_argument('--offset', type=float, default=0.0,
-                        help='Extra lyric sync offset in seconds on top of the '
-                             'built-in lead: positive shows lyrics earlier, '
-                             'negative later (default: 0)')
+                        help='Lyric sync offset in seconds: positive shows '
+                             'lyrics earlier, negative later. Default 0 matches '
+                             'the desktop media widget exactly. Stacks with any '
+                             'live nudge saved via the +/- keys and with '
+                             '$LYRICSOOO_LYRIC_LEAD (default: 0)')
     parser.add_argument('--no-cover-color', action='store_true',
                         help='Disable all colour tinting (card + lyrics); use '
                              'the terminal default foreground')
@@ -45,10 +51,6 @@ def main():
                              'chosen preset / file colour source')
     parser.add_argument('--no-notes', action='store_true',
                         help='Disable the floating music notes behind lyrics')
-    parser.add_argument('--cava', action='store_true',
-                        help='Draw a live audio-spectrum equaliser framing the '
-                             'lyrics on all four edges (reacts to what is playing). '
-                             'Requires the `cava` command; silently skipped if absent.')
     parser.add_argument('--player', type=str, default=None,
                         help='MPRIS player to follow (e.g. spotify, mpv, vlc). '
                              'Default: auto-detect the active player, so both '
@@ -59,25 +61,37 @@ def main():
                              "lecture/course playing in Firefox/Chrome can't hijack "
                              "the lyrics from your music. Pass '' to follow anything. "
                              "Ignored when --player pins a specific player.")
+    parser.add_argument('--player-backend', type=str, default=None, metavar='NAME',
+                        help="Force the now-playing source: 'playerctl' "
+                             "(Linux/MPRIS), 'smtc' (Windows), 'nowplaying-cli' "
+                             "(macOS). Default: auto-detect for your OS. Also "
+                             "settable via $LYRICSOOO_PLAYER_BACKEND.")
     parser.add_argument('--banner-hold', type=float, default=1.5,
                         help='Seconds the settled song-title card stays up on a '
                              'track switch before lyrics take over, timed after '
                              'the glitch resolves (default: 1.5)')
+    parser.add_argument('--reveal', type=str, default=None,
+                        choices=['standard', 'typewriter', 'fade', 'glow'],
+                        help='Line reveal effect (all optional, one at a time): '
+                             "'standard' (instant), 'typewriter' (char-by-char), "
+                             "'fade' (soft fade-in per line), 'glow' (the active "
+                             "line gently breathes). Default: standard.")
     parser.add_argument('--typewriter', action='store_true',
-                        help='Typewriter effect: progressively reveal each '
-                             'lyric line character by character (phrase-level '
-                             'mode only; ignored with --wlrc)')
+                        help='Shorthand for --reveal typewriter (phrase-level '
+                             'mode only; ignored with --wlrc).')
     parser.add_argument('--select', action='store_true',
-                        help='Interactive picker before starting: choose the '
-                             'effect (typewriter/standard) and style (phrase/word).')
+                        help='Interactive picker before starting: choose the reveal '
+                             'effect (standard/typewriter/fade/glow) and style '
+                             '(phrase/word).')
     parser.add_argument('--config', type=Path,
                         help='Path to config.yaml')
 
     args = parser.parse_args()
 
-    # Effect/style may be set by flags now and overridden by the --select picker
-    # once the colour source is known (so the card is themed). Resolved below.
-    typewriter = args.typewriter
+    # Reveal effect + style may be set by flags now and overridden by the --select
+    # picker once the colour source is known (so the card is themed). Resolved
+    # below. --reveal wins; --typewriter is a legacy shorthand for it.
+    reveal = args.reveal or ('typewriter' if args.typewriter else 'standard')
     wlrc = args.wlrc
 
     # Resolve the lyrics directory. With no --lrc-dir we use the shared default
@@ -99,11 +113,25 @@ def main():
     try:
         from .fonts import get_font, load_fonts_from_json, register_font
         from .visualizer_main import run_visualizer
-        from .visualizer_player import set_player, set_ignored
+        from .visualizer_player import set_player, set_ignored, set_backend, backend_name
         from .theme_source import make_color_provider
     except ImportError as e:
         print(f"Error: could not import visualizer modules — {e}")
         return 1
+
+    # Pick the now-playing backend for this OS (or honour an explicit override),
+    # then warn if this platform has no live-sync source available.
+    if args.player_backend:
+        set_backend(args.player_backend)
+    if backend_name() == 'none':
+        print("Note: no live-sync backend is available on this system, so the",
+              file=sys.stderr)
+        print("visualizer can't follow a player. Install one:", file=sys.stderr)
+        print("  · Linux  — playerctl        · Windows — pip install "
+              "'lyrics-tool[windows]'", file=sys.stderr)
+        print("  · macOS  — brew install nowplaying-cli", file=sys.stderr)
+        print("The offline tools lyricsooo-fetch / lyricsooo-cook still work.\n",
+              file=sys.stderr)
 
     # Follow a specific player, or auto-detect the active one (Spotify/local).
     set_player(args.player)
@@ -137,16 +165,18 @@ def main():
         from .selector import choose
         _c = color_provider.current() if color_provider is not None else None
         accent = _c.lyric if (_c and _c.lyric) else (219, 199, 102)
-        picks = choose(accent, typewriter=typewriter, wlrc=wlrc)
-        typewriter, wlrc = picks['typewriter'], picks['wlrc']
-    if typewriter and wlrc:
-        typewriter = False  # typewriter is a phrase-mode reveal; word mode wins
+        picks = choose(accent, reveal=reveal, wlrc=wlrc)
+        reveal, wlrc = picks['reveal'], picks['wlrc']
+    if reveal == 'typewriter' and wlrc:
+        reveal = 'standard'  # typewriter is a phrase-mode reveal; word mode wins
 
     print("Starting LRC visualizer...")
     print(f"LRC directory: {lrc_dir}")
     print(f"Font: {args.font}")
+    print(f"Player backend: {backend_name()}")
     if cover_color:
         print(f"Colour source: {source}")
+    print("Sync: press  -  /  +  to slide lyrics later / earlier · 0 to reset (saved)")
     print("Press Ctrl+C to exit")
     print()
 
@@ -161,9 +191,8 @@ def main():
             cover_color=cover_color,
             notes=not args.no_notes,
             banner_hold=args.banner_hold,
-            typewriter=typewriter,
+            reveal=reveal,
             color_provider=color_provider,
-            cava=args.cava,
         )
     except KeyboardInterrupt:
         print("\nExiting...")
