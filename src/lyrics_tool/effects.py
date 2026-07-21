@@ -92,3 +92,49 @@ class NoteField:
                 shade = GREY_MIN + int(round(bright * (GREY_SOFT - GREY_MIN)))
                 out.append((row, col, p['glyph'], shade))
         return out
+
+
+# ── premium per-line reveal effects (opt-in, one selected at a time) ─────────
+# Pure colour maths so they stay cheap and testable: given the lyric accent and
+# how long the current line has been on screen, return the colour to paint it
+# this frame. 'standard'/'typewriter' don't recolour (they return the base as-is
+# — typewriter animates the *text*, handled in the loop). 'fade' eases a line in
+# from dim → full when it appears; 'glow' gives the active line a soft, endless
+# breathing pulse. Both look their best on a dark terminal.
+FADE_IN = 0.40        # seconds a 'fade' line takes to reach full brightness
+GLOW_HZ = 0.5         # 'glow' breathing rate (cycles per second)
+_FALLBACK_ACCENT = (230, 230, 230)   # base used when no colour source is active
+
+REVEALS = ("standard", "typewriter", "fade", "glow")
+
+
+def _dim(color: Tuple[int, int, int], f: float) -> Tuple[int, int, int]:
+    """Scale ``color`` toward black by factor ``f`` (0 → black, 1 → unchanged)."""
+    f = max(0.0, min(1.0, f))
+    return tuple(int(round(c * f)) for c in color)
+
+
+def line_effect_color(base, mode: str, elapsed: float, paused: bool = False):
+    """Colour for the current lyric line under reveal ``mode``.
+
+    ``base`` is the accent RGB (or ``None`` = terminal default). ``elapsed`` is
+    seconds since the line appeared. Returns an RGB tuple, or ``None`` to keep
+    the terminal default (only for modes that don't recolour).
+    """
+    if mode not in ("fade", "glow"):
+        return base
+    b = base or _FALLBACK_ACCENT
+    if mode == "fade":
+        f = 0.15 + 0.85 * min(1.0, max(0.0, elapsed) / FADE_IN)   # dim → full
+        return _dim(b, f)
+    # glow: gentle continuous breathing, frozen while paused.
+    phase = 0.0 if paused else max(0.0, elapsed)
+    f = 0.78 + 0.22 * (0.5 + 0.5 * math.sin(phase * GLOW_HZ * math.tau))
+    return _dim(b, f)
+
+
+def effect_animating(mode: str, elapsed: float) -> bool:
+    """Whether ``mode`` still needs per-frame repaints at ``elapsed`` seconds."""
+    if mode == "fade":
+        return elapsed < FADE_IN
+    return mode == "glow"        # glow breathes forever

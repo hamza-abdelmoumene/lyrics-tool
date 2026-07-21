@@ -12,14 +12,10 @@ AUDIO_EXTENSIONS = {'.mp3', '.flac', '.m4a', '.ogg', '.opus', '.wav', '.wma', '.
 
 
 def get_audio_duration(audio_path: Path) -> Optional[float]:
-    """
-    Get audio file duration using ffprobe.
-    
-    Args:
-        audio_path: Path to audio file
-        
-    Returns:
-        Duration in seconds, or None if unable to determine
+    """Duration of ``audio_path`` in seconds via ``ffprobe``, or None if unknown.
+
+    ``ffprobe`` (from ffmpeg) is optional; a missing binary or unreadable file
+    just yields None so callers fall back to metadata-based matching.
     """
     try:
         result = subprocess.run(
@@ -35,16 +31,10 @@ def get_audio_duration(audio_path: Path) -> Optional[float]:
 
 
 def find_audio_for_lrc(lrc_path: Path, audio_dir: Path) -> Optional[Path]:
-    """
-    Find matching audio file for an LRC file.
-    Tries exact match first, then recursive search, then case-insensitive.
-    
-    Args:
-        lrc_path: Path to LRC file
-        audio_dir: Directory to search for audio files
-        
-    Returns:
-        Path to matching audio file, or None if not found
+    """Locate the audio file matching ``lrc_path`` under ``audio_dir``.
+
+    Tries an exact sibling name, then a recursive search, then a
+    case-insensitive stem match. Returns None if nothing matches.
     """
     base_name = lrc_path.stem
     
@@ -70,15 +60,7 @@ def find_audio_for_lrc(lrc_path: Path, audio_dir: Path) -> Optional[Path]:
 
 
 def get_audio_files(directory: Path) -> List[Path]:
-    """
-    Recursively find all audio files in directory.
-    
-    Args:
-        directory: Directory to search
-        
-    Returns:
-        List of audio file paths
-    """
+    """All audio files under ``directory`` (recursive), by extension."""
     audio_files = []
     # os.walk for Python 3.9+ compatibility (Path.walk is 3.12+).
     for root, _, files in os.walk(directory):
@@ -92,18 +74,11 @@ def get_audio_files(directory: Path) -> List[Path]:
 def find_lrc_for_audio(audio_path: Path, lrc_dir: Path, 
                        artist: str = None, title: str = None,
                        is_wlrc: bool = False) -> Optional[Path]:
-    """
-    Find matching LRC file for an audio file.
-    
-    Args:
-        audio_path: Path to audio file
-        lrc_dir: Directory containing LRC files
-        artist: Optional artist name for fallback matching
-        title: Optional title for fallback matching
-        is_wlrc: Whether to look for .wlrc files instead of .lrc
-        
-    Returns:
-        Path to matching LRC file, or None if not found
+    """Locate the ``.lrc`` / ``.wlrc`` file matching an audio track.
+
+    Match order: exact sibling name, same stem in ``lrc_dir``, then a normalised
+    ``artist+title`` or filename comparison. ``is_wlrc`` switches the extension
+    looked for. Returns None if nothing matches.
     """
     if not lrc_dir.exists():
         return None

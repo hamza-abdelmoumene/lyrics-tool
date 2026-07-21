@@ -1,6 +1,9 @@
 import unittest
 
-from lyrics_tool.effects import NoteField, NOTE_GLYPHS, GREY_MIN, GREY_SOFT
+from lyrics_tool.effects import (
+    NoteField, NOTE_GLYPHS, GREY_MIN, GREY_SOFT,
+    line_effect_color, effect_animating, FADE_IN, _FALLBACK_ACCENT,
+)
 from lyrics_tool import visualizer_display as vd
 from lyrics_tool.fonts import get_font
 
@@ -62,6 +65,43 @@ class TestOverlay(unittest.TestCase):
                       for c, ch in enumerate(line) if ch != " ")
         framed = vd._overlay_notes(base, [(target[0], target[1], "X")])
         self.assertEqual(framed, base)
+
+
+ACCENT = (200, 120, 255)
+
+
+class TestRevealEffects(unittest.TestCase):
+    def test_standard_and_typewriter_keep_base_colour(self):
+        # These modes don't recolour and never keep the frame animating.
+        for mode in ("standard", "typewriter"):
+            self.assertEqual(line_effect_color(ACCENT, mode, 0.0), ACCENT)
+            self.assertIsNone(line_effect_color(None, mode, 5.0))
+            self.assertFalse(effect_animating(mode, 0.0))
+
+    def test_fade_ramps_dim_to_full(self):
+        start = line_effect_color(ACCENT, "fade", 0.0)
+        mid = line_effect_color(ACCENT, "fade", FADE_IN / 2)
+        done = line_effect_color(ACCENT, "fade", FADE_IN)
+        # Brightness increases over the fade and lands exactly on the accent.
+        self.assertLess(sum(start), sum(mid))
+        self.assertLess(sum(mid), sum(done))
+        self.assertEqual(done, ACCENT)
+        # It animates only until the fade completes.
+        self.assertTrue(effect_animating("fade", 0.0))
+        self.assertFalse(effect_animating("fade", FADE_IN + 0.1))
+
+    def test_fade_uses_fallback_when_no_accent(self):
+        # With no colour source, fade works against a neutral bright base.
+        self.assertEqual(line_effect_color(None, "fade", FADE_IN), _FALLBACK_ACCENT)
+
+    def test_glow_breathes_within_bounds_and_forever(self):
+        vals = [sum(line_effect_color(ACCENT, "glow", t / 20.0)) for t in range(60)]
+        self.assertLess(min(vals), max(vals))            # it actually moves
+        self.assertTrue(all(v <= sum(ACCENT) for v in vals))  # never over the accent
+        self.assertTrue(effect_animating("glow", 999.0))      # glow never stops
+        # Frozen while paused: stable regardless of elapsed time.
+        self.assertEqual(line_effect_color(ACCENT, "glow", 1.0, paused=True),
+                         line_effect_color(ACCENT, "glow", 9.0, paused=True))
 
 
 def _visible_len(s: str) -> int:

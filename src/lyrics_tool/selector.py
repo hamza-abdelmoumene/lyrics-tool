@@ -17,12 +17,19 @@ import os
 import sys
 from typing import Optional
 
+from .keyinput import decode_key as _decode_key  # noqa: F401 (kept as a stable alias)
+from .keyinput import raw_mode
+from .keyinput import read_key as _read_key
+
 _ESC = "\033["
 _RESET = "\033[0m"
 
+# The reveal effect names, in the same order as the "effect" chips below.
+_REVEALS = ["standard", "typewriter", "fade", "glow"]
+
 _FIELDS = [
-    ("effect", ["Typewriter", "Standard"],
-     "how each line appears — revealed char-by-char, or all at once"),
+    ("effect", ["Standard", "Typewriter", "Fade", "Glow"],
+     "how each line appears — instant, typed out, softly faded in, or breathing"),
     ("style", ["Phrase", "Word"],
      "timing granularity — whole lines, or word-by-word (.wlrc)"),
 ]
@@ -32,36 +39,8 @@ def _accent(rgb) -> str:
     return f"{_ESC}38;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
 
 
-_ARROWS = {b"[A": "up", b"[B": "down", b"[C": "right", b"[D": "left",
-           b"OA": "up", b"OB": "down", b"OC": "right", b"OD": "left"}
-_KEYS = {b"\r": "enter", b"\n": "enter", b" ": "right",
-         b"\t": "down", b"k": "up", b"j": "down", b"h": "left", b"l": "right",
-         b"K": "up", b"J": "down", b"H": "left", b"L": "right",
-         b"q": "esc", b"Q": "esc", b"\x03": "esc"}
-
-
-def _decode_key(data: bytes) -> str:
-    """Map a raw keypress (possibly a multi-byte escape sequence) to a key name."""
-    if not data:
-        return ""
-    if data[:1] == b"\x1b":
-        # ESC [ A  (or the ESC O A "application cursor" variant some terminals send)
-        return _ARROWS.get(data[1:3], "esc")
-    return _KEYS.get(data[:1], "")
-
-
-def _read_key(fd: int) -> str:
-    """Read one keypress off the raw fd. Reading bytes directly (not via the
-    buffered ``sys.stdin``) is what makes arrow keys work: the whole ``ESC [ A``
-    sequence is delivered in a single ``os.read`` instead of getting split with
-    the tail stuck in Python's stream buffer where ``select`` can't see it."""
-    import select
-
-    data = os.read(fd, 8)
-    # If only the lone ESC arrived, give the sequence tail a beat to land.
-    if data == b"\x1b" and select.select([fd], [], [], 0.03)[0]:
-        data += os.read(fd, 8)
-    return _decode_key(data)
+# Key reading (arrow-aware, cross-platform) lives in ``keyinput``; ``_decode_key``
+# and ``_read_key`` above are stable aliases into it.
 
 
 def _render(fields, sel, cursor, accent: str, cols: int, rows: int) -> str:
@@ -99,13 +78,13 @@ def _render(fields, sel, cursor, accent: str, cols: int, rows: int) -> str:
     return "\n".join(out)
 
 
-def choose(accent=(219, 199, 102), typewriter=True, wlrc=False) -> Optional[dict]:
-    """Show the picker; return {'typewriter': bool, 'wlrc': bool} or defaults.
+def choose(accent=(219, 199, 102), reveal="standard", wlrc=False) -> Optional[dict]:
+    """Show the picker; return {'reveal': str, 'wlrc': bool} or defaults.
 
-    Cancelling (q/esc) or no TTY returns the given defaults rather than None, so
-    callers can always rely on a usable result.
+    ``reveal`` is one of :data:`_REVEALS`. Cancelling (q/esc) or no TTY returns
+    the given defaults rather than None, so callers can always rely on a result.
     """
-    defaults = {"typewriter": typewriter, "wlrc": wlrc}
+    defaults = {"reveal": reveal, "wlrc": wlrc}
     try:
         fd = sys.stdin.fileno()
         tty_ok = os.isatty(fd) and os.isatty(sys.stdout.fileno())
@@ -114,35 +93,31 @@ def choose(accent=(219, 199, 102), typewriter=True, wlrc=False) -> Optional[dict
     if not tty_ok:
         return defaults
 
-    import termios
-    import tty
-
     acc = _accent(accent)
-    sel = [0 if typewriter else 1, 1 if wlrc else 0]
+    reveal_idx = _REVEALS.index(reveal) if reveal in _REVEALS else 0
+    sel = [reveal_idx, 1 if wlrc else 0]
     cursor = 0
-    old = termios.tcgetattr(fd)
     out = sys.stdout
     out.write("\033[?25l\033[2J")
     try:
-        tty.setcbreak(fd)
-        while True:
-            cols, rows = _termsize()
-            out.write("\033[H" + _render(_FIELDS, sel, cursor, acc, cols, rows) + _RESET)
-            out.flush()
-            key = _read_key(fd)
-            if key == "up":
-                cursor = (cursor - 1) % len(_FIELDS)
-            elif key == "down":
-                cursor = (cursor + 1) % len(_FIELDS)
-            elif key in ("left", "right"):
-                n = len(_FIELDS[cursor][1])
-                sel[cursor] = (sel[cursor] + (1 if key == "right" else -1)) % n
-            elif key == "enter":
-                return {"typewriter": sel[0] == 0, "wlrc": sel[1] == 1}
-            elif key == "esc":
-                return defaults
+        with raw_mode(fd):
+            while True:
+                cols, rows = _termsize()
+                out.write("\033[H" + _render(_FIELDS, sel, cursor, acc, cols, rows) + _RESET)
+                out.flush()
+                key = _read_key(fd)
+                if key == "up":
+                    cursor = (cursor - 1) % len(_FIELDS)
+                elif key == "down":
+                    cursor = (cursor + 1) % len(_FIELDS)
+                elif key in ("left", "right"):
+                    n = len(_FIELDS[cursor][1])
+                    sel[cursor] = (sel[cursor] + (1 if key == "right" else -1)) % n
+                elif key == "enter":
+                    return {"reveal": _REVEALS[sel[0]], "wlrc": sel[1] == 1}
+                elif key == "esc":
+                    return defaults
     finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
         out.write(_RESET + "\033[?25h\033[2J\033[H")
         out.flush()
 

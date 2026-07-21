@@ -7,6 +7,8 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+from .keyinput import KeyReader
+
 
 class SyncData:
     """Shared state between the monitor thread and the display loop.
@@ -213,12 +215,54 @@ def fetch_lyrics_on_the_fly(artist: str, title: str, lrc_dir: Path, is_wlrc: boo
         return None
 
 
-# Built-in head-start applied to every line so lyrics land *with* the vocal
-# instead of a beat behind it. Players report their MPRIS position slightly
-# ahead of what you actually hear (client-side audio buffering), and there is
-# always sub-frame paint latency on top; leading by this much cancels both so
-# the words change exactly on the beat. Stacks with the user's ``--offset``.
-LYRIC_LEAD = 0.25
+# Built-in head-start applied to every line, in seconds. Positive shows lyrics
+# earlier than the raw player position; negative, later.
+#
+# Default 0.0 deliberately matches what the desktop media widget shows: it
+# highlights the lyric for the player's *raw* MPRIS position, so a non-zero lead
+# here is precisely what made the terminal lyrics run ahead of the widget. Any
+# read-ahead is now a per-taste choice, dialled live with the +/- keys (which
+# persist) or pinned with ``--offset`` / ``$LYRICSOOO_LYRIC_LEAD``.
+def _default_lead() -> float:
+    """Built-in lead, overridable via ``$LYRICSOOO_LYRIC_LEAD`` (seconds)."""
+    import os
+    raw = os.environ.get('LYRICSOOO_LYRIC_LEAD')
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+    return 0.0
+
+
+LYRIC_LEAD = _default_lead()
+
+# Step (seconds) each +/- keypress slides the lyrics while playing.
+NUDGE_STEP = 0.05
+
+
+def _load_saved_offset() -> float:
+    """Read the persisted live-nudge offset (seconds), or 0.0 if unset."""
+    from .paths import sync_offset_file
+    try:
+        return float(sync_offset_file().read_text().strip())
+    except Exception:
+        return 0.0
+
+
+def _save_offset(value: float) -> None:
+    """Persist the live-nudge offset so it survives the next launch."""
+    from .paths import sync_offset_file, ensure_dir
+    try:
+        path = sync_offset_file()
+        ensure_dir(path.parent)
+        path.write_text(f'{value:.3f}\n')
+    except Exception:
+        pass
+
+
+# Live sync-nudge keys are read through the cross-platform ``keyinput.KeyReader``
+# (POSIX termios + Windows msvcrt, no-op without a TTY).
 
 
 def run_visualizer(
@@ -233,7 +277,7 @@ def run_visualizer(
     banner_hold: float = 1.5,
     typewriter: bool = False,
     color_provider=None,
-    cava: bool = False,
+    reveal: str = "standard",
 ):
     """Run the LRC visualizer main loop.
 
@@ -241,27 +285,45 @@ def run_visualizer(
     tinted with the album cover's dominant colour (white text on dark covers,
     dark text on light ones) — then its lyrics start in lock-step with the
     audio on the default terminal background, with music notes drifting behind
-    them. Playback position is read once per anchor (with sub-call latency
-    compensation) and extrapolated with the monotonic clock between reads, so
-    lines flip on time without polling the player every frame.
+    them.
 
-    ``sync_offset`` shifts lyrics in seconds: positive shows them earlier,
-    negative later. It stacks on top of the built-in :data:`LYRIC_LEAD`, so the
-    default of 0 already lands the words on the beat.
+    Sync is closed-loop: a :class:`~lyrics_tool.sync.PlaybackClock` keeps a
+    smooth estimate of the player's position and continuously eases itself onto
+    fresh MPRIS samples fed by the monitor thread, so lyrics track the same
+    timeline the desktop media widget shows instead of drifting off a single
+    noisy anchor. Lines still flip on the monotonic clock between samples, so the
+    player is never polled per frame.
+
+    ``sync_offset`` shifts lyrics in seconds (positive = earlier, negative =
+    later) and stacks on the built-in :data:`LYRIC_LEAD` plus any live nudge the
+    user has saved. While playing, the ``+`` / ``-`` keys slide the lyrics in
+    real time and persist the choice; ``0`` clears it.
     """
     from .visualizer_player import get_state, get_audio_file_info, get_art_url, is_ad
     from .visualizer_display import (
         display_lyrics, display_waiting, display_now_playing,
         display_now_playing_glitch, display_ad, display_searching, display_no_lyrics,
         get_terminal_size, hide_cursor, show_cursor, clear_screen,
+        flash_sync, clear_sync_hud,
     )
     from .parser import parse_lrc_simple
     from .audio import find_lrc_for_audio
     from .theme_source import make_color_provider, NullColorProvider
-    from .effects import NoteField
+    from .effects import NoteField, line_effect_color, effect_animating
+    from .sync import PlaybackClock
 
-    # Effective head-start: built-in buffer compensation + user offset.
-    lead = LYRIC_LEAD + sync_offset
+    # Reveal effect: 'typewriter' still drives the char-by-char line selection;
+    # 'fade' / 'glow' are colour-only overlays applied per frame below. The legacy
+    # ``typewriter=True`` argument is honoured as a shorthand for reveal='typewriter'.
+    effect = "typewriter" if typewriter else (reveal or "standard")
+    typewriter = effect == "typewriter"
+
+    # Fixed part of the head-start: built-in lead + the pinned --offset. The live
+    # +/- keys add a saved nudge on top (``user_nudge``); ``lead`` is always the
+    # sum of the two and is recomputed whenever the nudge changes.
+    base_lead = LYRIC_LEAD + sync_offset
+    user_nudge = _load_saved_offset()
+    lead = base_lead + user_nudge
 
     # Background note field; recomputed at a calm cadence so the diff-renderer
     # can skip frames in between (smooth motion, negligible CPU).
@@ -283,19 +345,6 @@ def run_visualizer(
     elif color_provider is None:
         color_provider = make_color_provider('art')
 
-    # Optional reactive spectrum frame (cava) drawn around the lyrics. Degrades
-    # to nothing if cava isn't installed; the border colour follows the lyric tint.
-    from .visualizer_display import enable_border, disable_border, set_border_color
-    spectrum = None
-    cava_on = False
-    if cava:
-        from .spectrum import Spectrum, cava_available
-        if cava_available():
-            spectrum = Spectrum()
-            _c = color_provider.current()
-            enable_border(spectrum, _c.lyric if (_c and _c.lyric) else (220, 200, 120))
-            cava_on = True
-
     hide_cursor()
     clear_screen()
     display_waiting()
@@ -309,18 +358,21 @@ def run_visualizer(
     )
     monitor_thread.start()
 
-    def _anchor(state):
-        """Return (start_pos, start_time) for the given snapshot.
+    # The smooth, self-correcting playback estimate every painted line reads
+    # from. Fed fresh MPRIS samples each frame so it tracks the player's own
+    # timeline instead of drifting off a single anchor.
+    clock = PlaybackClock()
 
-        start_time is None while paused (frozen); otherwise it is the monotonic
-        instant that start_pos corresponds to, latency-compensated to *now*.
-        """
-        if state.status == 'Paused':
-            sync_data.paused = True
-            return state.position + lead, None
-        sync_data.paused = False
-        now = time.monotonic()
-        return state.position + (now - state.sampled_at) + lead, now
+    def _anchor_clock(state):
+        """Hard-set the clock from a fresh snapshot; mirror the paused flag."""
+        paused = state.status == 'Paused'
+        clock.reset(state.position, state.sampled_at, playing=not paused)
+        sync_data.paused = paused
+
+    # Live keyboard control (sync nudge). A no-op off a TTY; put the terminal in
+    # cbreak on enter and always restore it in ``finally``.
+    key_reader = KeyReader()
+    key_reader.__enter__()
 
     try:
         last_title = None
@@ -540,46 +592,86 @@ def run_visualizer(
             if not _hold_banner(title):
                 continue
 
-            # Anchor to a fresh, precise sample for the first painted line.
+            # Anchor the clock to a fresh, precise sample for the first line.
             state = get_state()
             if state is None or state.title != title:
                 continue
             sync_data.current_title = title
-            start_pos, start_time = _anchor(state)
-            # In typewriter mode, select lines by the raw playback position
-            # (without the lyric lead) so the line doesn't switch before the
-            # typewriter finishes revealing the current phrase.
-            _sel_pos = (start_pos - lead) if typewriter else start_pos
-            idx = _index_for(lines, _sel_pos)
+            _anchor_clock(state)
+            last_consumed = state.sampled_at   # newest sample folded into the clock
             sync_data.should_resync = False
             last_text = None
             last_tq = None
+            last_idx = None                     # for reveal-effect line timing
+            line_shown_at = time.monotonic()
+            hud_until = 0.0                     # monotonic instant the sync HUD hides
 
             while sync_data.running:
+                # Live sync nudge: +/- slide the lyrics earlier/later in real
+                # time (and persist it), 0 clears it. No-op unless stdin is a TTY.
+                # ('[' / ']' are avoided: they collide with arrow-key escapes.)
+                key = key_reader.get()
+                if key:
+                    if key in ('+', '=', '.'):
+                        user_nudge = min(5.0, round(user_nudge + NUDGE_STEP, 3))
+                    elif key in ('-', '_', ','):
+                        user_nudge = max(-5.0, round(user_nudge - NUDGE_STEP, 3))
+                    elif key == '0':
+                        user_nudge = 0.0
+                    else:
+                        key = None
+                    if key:
+                        lead = base_lead + user_nudge
+                        _save_offset(user_nudge)
+                        hud_until = time.monotonic() + 1.6
+
+                # Big events (track change / pause / seek) flagged by the monitor
+                # → jump the clock straight onto a fresh sample.
                 if sync_data.should_resync:
                     sync_data.should_resync = False
                     snap = sync_data.latest
                     if snap is not None and snap.title != title:
                         break  # new song → outer loop reloads + re-announces
                     if snap is not None:
-                        start_pos, start_time = _anchor(snap)
-                        _sel_pos = (start_pos - lead) if typewriter else start_pos
-                        idx = _index_for(lines, _sel_pos)
+                        _anchor_clock(snap)
+                        last_consumed = snap.sampled_at
 
-                if start_time is None:  # paused/frozen
-                    current_pos = start_pos
-                else:
-                    current_pos = start_pos + (time.monotonic() - start_time)
+                # Continuous fine correction: ease the clock toward each fresh
+                # player sample so a noisy initial anchor can't leave the whole
+                # song running early or late. Also self-heals a pause/resume the
+                # monitor's flag happened to miss.
+                snap = sync_data.latest
+                if (snap is not None and snap.title == title
+                        and snap.sampled_at != last_consumed):
+                    last_consumed = snap.sampled_at
+                    if snap.status == 'Paused':
+                        if not clock.paused:
+                            clock.pause(snap.position)
+                            sync_data.paused = True
+                    elif clock.paused:
+                        _anchor_clock(snap)          # resumed
+                    else:
+                        clock.correct(snap.position, snap.sampled_at)
 
-                # In typewriter mode, advance lines by the raw position so the
-                # current phrase stays on screen until the reveal completes.
-                line_pos = (current_pos - lead) if typewriter else current_pos
+                # Current playback estimate. ``current_pos`` carries the lead for
+                # line selection; typewriter reveal tracks the raw position so a
+                # phrase isn't cut off before it finishes typing.
+                play = clock.position()
+                current_pos = play + lead
+                line_pos = play if typewriter else current_pos
 
-                # Advance to the line that should be on screen now.
-                while idx + 1 < len(lines) and line_pos >= lines[idx + 1][0]:
-                    idx += 1
+                # Pick the line for now — recomputed each frame so a gentle
+                # correction that nudges us back across a boundary is honoured,
+                # not just forward motion.
+                idx = _index_for(lines, line_pos)
 
                 text = '' if idx < 0 else lines[idx][1]
+
+                # Note when the visible line changes — the reveal effects (fade /
+                # glow) time their animation from this instant.
+                if idx != last_idx:
+                    last_idx = idx
+                    line_shown_at = time.monotonic()
 
                 # Typewriter: progressively reveal the line character-by-character.
                 # Uses line_pos (raw playback position without the lyric lead) so
@@ -616,19 +708,35 @@ def run_visualizer(
                 # landing, or a live desktop-theme switch under our feet.
                 if _sync_colors():
                     last_text = None  # force a repaint in the new colour
-                    if cava_on:
-                        set_border_color(lyric_color)
 
-                # In typewriter mode the visible portion changes every tick,
-                # so we compare the display string rather than the source text.
+                # Premium reveal effect: recolour the line as it fades in / glows.
+                # 'standard'/'typewriter' leave the colour untouched (eff == base)
+                # and never keep the frame animating.
+                elapsed = time.monotonic() - line_shown_at
+                eff_color = line_effect_color(lyric_color, effect, elapsed, sync_data.paused)
+                animating = effect_animating(effect, elapsed)
+
+                # In typewriter mode the visible portion changes every tick, so we
+                # compare the display string rather than the source text; while an
+                # effect animates we repaint every frame so the colour keeps moving.
                 cmp_text = tw_display if typewriter else text
-                if cmp_text != last_text or tq != last_tq or cava_on:
+                if cmp_text != last_text or tq != last_tq or animating:
                     last_text, last_tq = cmp_text, tq
                     if note_field is not None:
                         cols, rows = get_terminal_size()
                         note_positions = note_field.positions(cols, rows, tq * NOTE_DT)
                     display_lyrics(tw_display, font_data=font_data, notes=note_positions,
-                                   color=lyric_color)
+                                   color=eff_color)
+
+                # Live sync HUD: sits on the bottom row via save/restore cursor
+                # (outside the frame diff), repainted each frame while up so a
+                # lyric repaint can't scrub it, then cleared once when it expires.
+                if hud_until:
+                    if time.monotonic() > hud_until:
+                        clear_sync_hud()
+                        hud_until = 0.0
+                    else:
+                        flash_sync(lead, lyric_color)
 
                 # Spin slower while paused — nothing advances, so save CPU.
                 # In typewriter mode keep a snappy tick even when paused so the
@@ -642,9 +750,6 @@ def run_visualizer(
         pass
     finally:
         sync_data.running = False
-        if cava_on:
-            disable_border()
-        if spectrum is not None:
-            spectrum.close()
+        key_reader.__exit__(None, None, None)
         show_cursor()
         clear_screen()
