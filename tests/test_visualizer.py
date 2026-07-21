@@ -194,7 +194,7 @@ class VisualizerLoopTest(unittest.TestCase):
             find_lrc=lambda *a, **k: Path("/tmp/x.lrc"),
             parse_lines=lambda p: lines,
             until=lambda r: r.has("lyric"),
-            typewriter=True,
+            reveal="typewriter",
         )
         self.assertTrue(rec.has("announce", "Type Song"))
         self.assertTrue(rec.has("lyric"))
