@@ -8,11 +8,20 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        # Full Python range on Linux; a representative run on Windows + macOS so
+        # the cross-platform backends and terminal handling stay green there too.
+        os: [ubuntu-latest]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
 
     steps:
       - uses: actions/checkout@v4
@@ -24,14 +33,27 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[dev]"
-
-      - name: Lint (ruff)
-        run: ruff check .
+        # The [windows] extra's winsdk has a sys_platform marker, so it only
+        # actually installs on the Windows runner — exercising that backend's
+        # real import path there while staying a no-op on Linux/macOS.
+        run: pip install -e ".[dev,windows]"
 
       - name: Tests (pytest)
         run: pytest -q
 
+  lint:
+    name: lint & types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Lint (ruff)
+        run: ruff check .
       - name: Type check (mypy, informational)
         run: mypy src
         continue-on-error: true
