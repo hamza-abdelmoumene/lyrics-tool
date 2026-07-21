@@ -4,12 +4,25 @@ Handles rendering text in various styles to terminal
 """
 import sys
 import os
+import re
 import time
 import random
 from typing import List, Optional, Tuple
 
 RGB = Tuple[int, int, int]
 _RESET = '\033[0m'
+
+# Lyrics and track metadata come from the network (LRCLIB / syncedlyrics) and
+# the media player, so they're untrusted. Strip C0/C1 control bytes — crucially
+# the ESC (0x1b) that begins every ANSI sequence — before any of it reaches the
+# terminal, so a crafted lyric or title can't inject cursor moves, colour, or
+# screen-clearing escapes. Tab and newline are preserved.
+_CTRL_RE = re.compile(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]')
+
+
+def sanitize_text(text: str) -> str:
+    """Remove terminal control characters from externally-sourced text."""
+    return _CTRL_RE.sub('', text) if text else text
 # Dim, neutral grey for the ambient notes so they read as background, never
 # competing with the lyric. 256-colour code keeps it terminal-friendly. A note
 # may carry its own grey shade (depth/twinkle); this is the fallback.
@@ -44,18 +57,6 @@ _last_frame = None
 _last_size = None
 
 
-# ── reactive spectrum border ────────────────────────────────────────────────
-# An optional cava-driven equaliser framing the lyrics on all four edges. The
-# trick that keeps it non-invasive: when a border is active, get_terminal_size()
-# reports the *inner* box, so every renderer (lyrics, cards, idle screens)
-# centres itself inside the frame with zero changes — and _paint() draws the
-# spectrum ring around the inner frame at paint time.
-_BORDER_ON = False
-_BORDER = {"spectrum": None, "color": (220, 200, 120)}
-_MY = 4   # top/bottom band thickness in character rows  (×8 eighth-block levels)
-_MX = 7   # left/right band thickness in character cols   (×8 eighth-block levels)
-
-
 def _real_size() -> tuple:
     try:
         s = os.get_terminal_size()
@@ -64,156 +65,9 @@ def _real_size() -> tuple:
         return 80, 24
 
 
-def _border_active() -> bool:
-    """Border on *and* the terminal is big enough to hold it comfortably."""
-    if not _BORDER_ON:
-        return False
-    c, r = _real_size()
-    return c >= 2 * _MX + 16 and r >= 2 * _MY + 6
-
-
 def get_terminal_size() -> tuple:
-    """Terminal size — the *inner* box when a spectrum border is active."""
-    c, r = _real_size()
-    if _border_active():
-        return c - 2 * _MX, r - 2 * _MY
-    return c, r
-
-
-def enable_border(spectrum, color: RGB) -> None:
-    """Turn on the reactive spectrum frame, driven by ``spectrum`` (see spectrum.py)."""
-    global _BORDER_ON, _last_frame
-    _BORDER["spectrum"] = spectrum
-    _BORDER["color"] = color
-    _BORDER_ON = True
-    _last_frame = None
-
-
-def set_border_color(color: RGB) -> None:
-    if color is not None:
-        _BORDER["color"] = color
-
-
-def disable_border() -> None:
-    global _BORDER_ON, _last_frame
-    _BORDER_ON = False
-    _BORDER["spectrum"] = None
-    _last_frame = None
-
-
-def border_enabled() -> bool:
-    return _BORDER_ON
-
-
-def _resample(arr, n: int):
-    m = len(arr)
-    if n <= 0 or m == 0:
-        return [0.0] * max(0, n)
-    if n == m:
-        return list(arr)
-    out = []
-    for i in range(n):
-        x = i * (m - 1) / (n - 1) if n > 1 else 0.0
-        lo = int(x)
-        hi = min(lo + 1, m - 1)
-        out.append(arr[lo] + (arr[hi] - arr[lo]) * (x - lo))
-    return out
-
-
-def _grad(color: RGB, t: float) -> RGB:
-    """Bar colour at height ``t`` (0 baseline → 1 tip): dim base → bright toward the tip."""
-    r, g, b = color
-    t = max(0.0, min(1.0, t))
-    dim = (r * 0.5, g * 0.5, b * 0.5)                              # saturated base
-    hot = (r + (255 - r) * 0.7, g + (255 - g) * 0.7, b + (255 - b) * 0.7)  # near-white tips
-    return tuple(int(dim[i] + (hot[i] - dim[i]) * t) for i in range(3))
-
-
-# Eighth-block ramps → 8 sub-levels per cell, so a 4-cell band shows 32 steps of
-# bar height. Vertical fills from the bottom, horizontal from the left.
-_EIGHTHS_V = " ▁▂▃▄▅▆▇█"
-_EIGHTHS_H = " ▏▎▍▌▋▊▉█"
-
-
-def _bar_cells(value: float, n: int, color: RGB, reverse: bool, glyphs) -> List[str]:
-    """Render one bar as ``n`` cell-strings, index 0 = the outer (baseline) cell.
-
-    ``reverse`` flips the partial to fill from the far side of the cell (used for
-    the top and right edges, whose bars grow away from a bottom/left-anchored
-    glyph), painted as background so the ink lands on the correct side.
-    """
-    total = max(0.0, min(1.0, value)) * n * 8.0     # height in eighths
-    cells = []
-    for pos in range(n):
-        filled = total - pos * 8.0
-        t = (pos + 0.6) / n                          # colour: dim base → bright tip
-        r, g, b = _grad(color, t)
-        if filled <= 0.0:
-            cells.append(" ")
-        elif filled >= 8.0:
-            cells.append(f"\033[38;2;{r};{g};{b}m{glyphs[8]}{_RESET}")
-        else:
-            e = max(1, min(7, int(filled)))
-            if not reverse:
-                cells.append(f"\033[38;2;{r};{g};{b}m{glyphs[e]}{_RESET}")
-            else:
-                # far-side partial: paint the cell bg with the bar colour and let
-                # the (8-e) glyph's ink cover the empty side in the default colour.
-                cells.append(f"\033[38;2;0;0;0m\033[48;2;{r};{g};{b}m{glyphs[8 - e]}{_RESET}")
-    return cells
-
-
-def _v_band(values, my: int, color: RGB, anchor: str) -> List[str]:
-    """A horizontal spectrum strip of vertical bars → ``my`` screen rows (top→bottom)."""
-    reverse = anchor == "top"
-    per_col = [_bar_cells(v, my, color, reverse, _EIGHTHS_V) for v in values]
-    # index 0 is the outer cell: top edge's outer is the top row; bottom's is the
-    # bottom row, so flip its per-column order into screen order.
-    if anchor == "bottom":
-        per_col = [list(reversed(c)) for c in per_col]
-    return ["".join(col[j] for col in per_col) for j in range(my)]
-
-
-def _h_band(values, mx: int, color: RGB, anchor: str) -> List[str]:
-    """A vertical spectrum strip of horizontal bars → one ``mx``-wide cell per row."""
-    reverse = anchor == "right"
-    out = []
-    for v in values:
-        cells = _bar_cells(v, mx, color, reverse, _EIGHTHS_H)   # index 0 = outer
-        if anchor == "right":                                   # outer is the right col
-            cells = list(reversed(cells))
-        out.append("".join(cells))
-    return out
-
-
-def _frame_with_border(inner: str, real_cols: int, real_rows: int) -> str:
-    """Wrap an inner (inset-sized) frame in a live spectrum ring."""
-    mx, my = _MX, _MY
-    iw, ih = real_cols - 2 * mx, real_rows - 2 * my
-    color = _BORDER["color"]
-    spec = _BORDER["spectrum"]
-    base = spec.bars(128) if spec is not None else None
-    if not base:
-        base = [0.0] * 128
-
-    top = _resample(base, iw)
-    bottom = list(reversed(top))                 # mirror for rotational symmetry
-    left = _resample(base, ih)
-    right = list(reversed(left))
-
-    top_band = _v_band(top, my, color, "top")
-    bot_band = _v_band(bottom, my, color, "bottom")
-    left_col = _h_band(left, mx, color, "left")
-    right_col = _h_band(right, mx, color, "right")
-
-    inner_lines = inner.split("\n")
-    corner = " " * mx
-    out = [corner + top_band[j] + corner for j in range(my)]
-    for r in range(ih):
-        line = inner_lines[r] if r < len(inner_lines) else " " * iw
-        out.append(left_col[r] + line + right_col[r])
-    out += [corner + bot_band[j] + corner for j in range(my)]
-    return "\n".join(out)
+    """Current terminal size as ``(columns, rows)``."""
+    return _real_size()
 
 
 def clear_screen():
@@ -233,6 +87,38 @@ def hide_cursor():
 def show_cursor():
     """Show terminal cursor"""
     sys.stdout.write('\033[?25h')
+    sys.stdout.flush()
+
+
+def flash_sync(offset: float, color: Optional[RGB] = None):
+    """Briefly show the live sync offset on the bottom row.
+
+    Printed with a save/restore-cursor pair straight to the last line, entirely
+    outside the frame diff-renderer, so it overlays the lyrics without forcing a
+    full repaint or corrupting ``_last_frame``. ``offset`` is the net lead in
+    seconds: positive = lyrics shown earlier than the player, negative = later.
+    Cleared by :func:`clear_sync_hud`.
+    """
+    cols, rows = _real_size()
+    sign = '+' if offset >= 0 else '-'
+    when = 'earlier' if offset > 0 else ('later' if offset < 0 else 'in step')
+    label = f' sync {sign}{abs(offset):.2f}s · {when}   [-]/[+] adjust  [0] reset '
+    label = label[:max(0, cols)]
+    sgr = ''
+    if color is not None:
+        r, g, b = color
+        sgr = f'\033[38;2;{r};{g};{b}m'
+    # Save cursor, jump to bottom-left, clear the line, paint, restore.
+    sys.stdout.write(
+        f'\0337\033[{rows};1H\033[2K{sgr}{label}{_RESET}\0338'
+    )
+    sys.stdout.flush()
+
+
+def clear_sync_hud():
+    """Erase the bottom-row sync overlay left by :func:`flash_sync`."""
+    _, rows = _real_size()
+    sys.stdout.write(f'\0337\033[{rows};1H\033[2K\0338')
     sys.stdout.flush()
 
 
@@ -322,6 +208,7 @@ def render_block_text(text: str, font_data: dict) -> str:
     Returns:
         Rendered text as string sized to the current terminal
     """
+    text = sanitize_text(text)
     cols, rows = get_terminal_size()
     key = ('block', text, cols, rows)
     cached = _render_cache.get(key)
@@ -348,6 +235,7 @@ def render_block_text(text: str, font_data: dict) -> str:
 def render_now_playing(artist: str, title: str, font_data: dict) -> str:
     """Render a full-screen 'now playing' card: title in block letters with the
     artist on a plain centered line beneath it."""
+    artist, title = sanitize_text(artist), sanitize_text(title)
     cols, rows = get_terminal_size()
 
     if font_data:
@@ -548,8 +436,9 @@ def render_simple_text(text: str, centered: bool = True) -> str:
     Returns:
         Rendered text as string
     """
+    text = sanitize_text(text)
     cols, rows = get_terminal_size()
-    
+
     if centered:
         pad_top = rows // 2
         pad_left = max(0, (cols - len(text)) // 2)
@@ -626,10 +515,6 @@ def _paint(frame: str, clear: bool):
     real_cols, real_rows = _real_size()
     resized = (real_cols, real_rows) != _last_size
     _last_size = (real_cols, real_rows)
-
-    # Wrap the (inner) frame in the live spectrum ring when the border is on.
-    if _border_active():
-        frame = _frame_with_border(frame, real_cols, real_rows)
 
     if frame == _last_frame and not clear and not resized:
         return
