@@ -275,7 +275,6 @@ def run_visualizer(
     cover_color: bool = True,
     notes: bool = True,
     banner_hold: float = 1.5,
-    typewriter: bool = False,
     color_provider=None,
     reveal: str = "standard",
 ):
@@ -312,10 +311,9 @@ def run_visualizer(
     from .effects import NoteField, line_effect_color, effect_animating
     from .sync import PlaybackClock
 
-    # Reveal effect: 'typewriter' still drives the char-by-char line selection;
-    # 'fade' / 'glow' are colour-only overlays applied per frame below. The legacy
-    # ``typewriter=True`` argument is honoured as a shorthand for reveal='typewriter'.
-    effect = "typewriter" if typewriter else (reveal or "standard")
+    # Reveal effect: 'typewriter' drives the char-by-char line selection; 'fade' /
+    # 'glow' are colour-only overlays applied per frame below; 'standard' is instant.
+    effect = reveal or "standard"
     typewriter = effect == "typewriter"
 
     # Fixed part of the head-start: built-in lead + the pinned --offset. The live
