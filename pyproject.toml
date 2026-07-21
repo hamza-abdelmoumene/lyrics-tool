@@ -4,19 +4,32 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lyrics-tool"
-version = "0.1.0"
-description = "Terminal lyrics visualizer and LRC/WLRC processing suite (playerctl + LRCLIB)"
+version = "0.2.0"
+description = "Cross-platform terminal lyrics visualizer and LRC/WLRC toolkit (MPRIS · Windows SMTC · macOS)"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
 authors = [{ name = "Hamza Abdelmoumene" }]
-keywords = ["lyrics", "lrc", "wlrc", "spotify", "playerctl", "terminal", "tui"]
+keywords = [
+    "lyrics", "lrc", "wlrc", "spotify", "playerctl", "mpris", "smtc",
+    "terminal", "tui", "visualizer", "cross-platform",
+]
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Sound/Audio :: Players",
+    "Topic :: Terminals",
 ]
 dependencies = [
     "syncedlyrics>=0.7",
@@ -26,6 +39,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Windows live sync — the System Media Transport Controls projection.
+# Marker keeps it from being pulled in on Linux/macOS.
+windows = ["winsdk>=1.0.0b10; sys_platform == 'win32'"]
 # Per-word onset detection (real timing instead of even spacing).
 onset = ["librosa>=0.10", "numpy>=1.23"]
 dev = ["pytest>=7", "ruff>=0.5", "mypy>=1.8"]
@@ -39,6 +55,7 @@ lyricsooo-cook = "lyrics_tool.cli_cook:main"
 Homepage = "https://github.com/hamza-abdelmoumene/lyrics-tool"
 Repository = "https://github.com/hamza-abdelmoumene/lyrics-tool"
 Issues = "https://github.com/hamza-abdelmoumene/lyrics-tool/issues"
+Changelog = "https://github.com/hamza-abdelmoumene/lyrics-tool/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -49,7 +66,15 @@ where = ["src"]
 [tool.setuptools.package-data]
 lyrics_tool = ["custom_fonts.json", "config_example.yaml"]
 
+[tool.ruff]
+target-version = "py39"
+
 [tool.ruff.lint]
 # Default rules (E, F) plus ignore E741: single-letter `l` reads as "line"/"letter"
 # in the renderer loops and is clear in context.
 ignore = ["E741"]
+
+[tool.mypy]
+files = ["src"]
+ignore_missing_imports = true   # optional/OS-specific deps (winsdk, librosa, …)
+warn_unused_ignores = false
