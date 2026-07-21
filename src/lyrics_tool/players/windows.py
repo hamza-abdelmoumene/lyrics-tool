@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from .base import NowPlaying, PlayerBackend
+from .base import NowPlaying, PlayerBackend, write_cover
 
 # Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus
 _PLAYING = 4
@@ -144,3 +144,39 @@ class WindowsMediaBackend(PlayerBackend):
             return None
 
         return _build_snapshot(status_code, timeline, props, (t0 + t1) / 2)
+
+    def art_url(self) -> Optional[str]:
+        """Best-effort cover art from the SMTC session thumbnail (→ temp file).
+
+        SMTC exposes art only as a thumbnail *stream*, so this reads it into a
+        temp file that :mod:`lyrics_tool.cover` can load. Best-effort and fully
+        guarded: any winsdk hiccup returns ``None`` (no tint) rather than raising.
+        The stream-read path here can't be exercised on CI, so treat it as
+        untested on real hardware — the graceful fallback keeps that safe.
+        """
+        try:
+            from winsdk.windows.media.control import (
+                GlobalSystemMediaTransportControlsSessionManager as Manager,
+            )
+            from winsdk.windows.storage.streams import DataReader
+        except Exception:
+            return None
+        try:
+            manager = _run_async(Manager.request_async())
+            session = self._current_session(manager)
+            if session is None:
+                return None
+            props = _run_async(session.try_get_media_properties_async())
+            ref = getattr(props, "thumbnail", None)
+            if ref is None:
+                return None
+            stream = _run_async(ref.open_read_async())
+            size = int(getattr(stream, "size", 0) or 0)
+            if size <= 0:
+                return None
+            reader = DataReader(stream)
+            _run_async(reader.load_async(size))
+            data = bytes(reader.read_bytes(size))
+            return write_cover(data, "smtc")
+        except Exception:
+            return None

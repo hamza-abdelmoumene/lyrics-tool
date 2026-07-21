@@ -10,8 +10,27 @@ picked.
 """
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import NamedTuple, Optional, Tuple
+
+
+def write_cover(data: bytes, name: str) -> Optional[str]:
+    """Write cover-art bytes to a reused temp file, return a ``file://`` URL.
+
+    Backends that only expose album art as raw bytes (Windows thumbnail, macOS
+    artwork) stash it here so :mod:`lyrics_tool.cover` can read it like any other
+    art source. One file per ``name`` is reused (overwritten per track) so images
+    never accumulate. Returns ``None`` on empty input or any write error.
+    """
+    if not data:
+        return None
+    try:
+        path = Path(tempfile.gettempdir()) / f"lyricsooo-cover-{name}.img"
+        path.write_bytes(data)
+        return path.as_uri()
+    except Exception:
+        return None
 
 
 class NowPlaying(NamedTuple):

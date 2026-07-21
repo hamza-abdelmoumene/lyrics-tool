@@ -142,3 +142,50 @@ def test_macos_snapshot_none_on_error(monkeypatch):
 
     monkeypatch.setattr(macos.subprocess, "run", lambda *a, **k: _R())
     assert macos.MacNowPlayingBackend().snapshot() is None
+
+
+# ── cover art (Windows/macOS write bytes → file:// that cover.py can read) ────
+
+def test_write_cover_roundtrips_through_downloader():
+    from lyrics_tool.cover import _download
+    from lyrics_tool.players.base import write_cover
+
+    payload = b"\x89PNG\r\n\x1a\n-fake-image-bytes"
+    url = write_cover(payload, "unittest")
+    assert url is not None and url.startswith("file://")
+    assert _download(url) == payload          # cover.py reads it back verbatim
+
+
+def test_write_cover_empty_is_none():
+    from lyrics_tool.players.base import write_cover
+    assert write_cover(b"", "unittest") is None
+
+
+def test_macos_decode_artwork():
+    import base64
+
+    from lyrics_tool.players.macos import _decode_artwork
+    raw = b"cover-bytes"
+    assert _decode_artwork(base64.b64encode(raw).decode()) == raw
+    assert _decode_artwork("null") is None
+    assert _decode_artwork("") is None
+    assert _decode_artwork("   ") is None
+
+
+def test_macos_art_url_writes_and_returns_file(monkeypatch):
+    import base64
+
+    from lyrics_tool.cover import _download
+    from lyrics_tool.players import macos
+
+    raw = b"\xff\xd8\xff-jpeg-ish"
+
+    class _R:
+        returncode = 0
+        stdout = base64.b64encode(raw).decode()
+        stderr = ""
+
+    monkeypatch.setattr(macos.subprocess, "run", lambda *a, **k: _R())
+    url = macos.MacNowPlayingBackend().art_url()
+    assert url and url.startswith("file://")
+    assert _download(url) == raw

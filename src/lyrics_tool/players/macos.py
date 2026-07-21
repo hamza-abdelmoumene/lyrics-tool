@@ -12,13 +12,14 @@ exposed here.
 """
 from __future__ import annotations
 
+import base64
 import shutil
 import subprocess
 import sys
 import time
 from typing import List, Optional
 
-from .base import NowPlaying, PlayerBackend
+from .base import NowPlaying, PlayerBackend, write_cover
 
 # Queried in one call; each value comes back on its own line ("null" if absent).
 _KEYS = ["title", "artist", "album", "duration", "elapsedTime", "playbackRate"]
@@ -31,6 +32,20 @@ def _num(value: str) -> Optional[float]:
     try:
         return float(value)
     except ValueError:
+        return None
+
+
+def _decode_artwork(b64: str) -> Optional[bytes]:
+    """Decode ``nowplaying-cli get artworkData`` (base64) to image bytes.
+
+    Pure/testable: returns ``None`` for empty, ``null``, or undecodable input.
+    """
+    b64 = (b64 or "").strip()
+    if not b64 or b64.lower() == "null":
+        return None
+    try:
+        return base64.b64decode(b64, validate=False)
+    except Exception:
         return None
 
 
@@ -90,3 +105,17 @@ class MacNowPlayingBackend(PlayerBackend):
         if result.returncode != 0:
             return None
         return _parse(result.stdout.splitlines(), (t0 + t1) / 2)
+
+    def art_url(self) -> Optional[str]:
+        """Cover art via ``nowplaying-cli get artworkData`` (base64 → temp file)."""
+        try:
+            result = subprocess.run(
+                ["nowplaying-cli", "get", "artworkData"],
+                capture_output=True, text=True, timeout=1.0,
+            )
+            if result.returncode != 0:
+                return None
+            data = _decode_artwork(result.stdout)
+            return write_cover(data, "macos") if data else None
+        except Exception:
+            return None

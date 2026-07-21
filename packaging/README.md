@@ -15,18 +15,26 @@ here are for maintainers who want native distro packages on top of that.
 
 1. Bump the version in `pyproject.toml` **and** `src/lyrics_tool/__init__.py`, and
    add a section to [`CHANGELOG.md`](../CHANGELOG.md).
-2. One-time: register `lyrics-tool` as a
-   [Trusted Publisher](https://docs.pypi.org/trusted-publishers/) on PyPI,
-   pointing at `release.yml` in this repo (environment `pypi`).
-3. Tag and push:
+2. Tag and push:
    ```bash
    git tag -a v0.2.0 -m "v0.2.0" && git push origin v0.2.0
    ```
-   The workflow builds the sdist + wheel, runs `twine check`, and publishes.
-   No API token is stored anywhere — publishing uses short-lived OIDC.
+   `release.yml` builds the sdist + wheel, runs `twine check`, and **publishes a
+   GitHub Release** with them attached. This always works — no secrets needed.
 
-Once on PyPI, `pipx install lyrics-tool` / `uv tool install lyrics-tool` work
-everywhere.
+### Enabling PyPI (one-time, optional)
+
+PyPI publishing is gated so tagging never fails before it's configured:
+
+1. Register `lyrics-tool` as a
+   [Trusted Publisher](https://docs.pypi.org/trusted-publishers/) on PyPI,
+   pointing at `release.yml` in this repo (environment `pypi`).
+2. Add a repository variable **`PUBLISH_TO_PYPI` = `true`**
+   (Settings → Secrets and variables → Actions → Variables).
+
+From then on, every `v*` tag also publishes to PyPI via short-lived OIDC (no API
+token stored anywhere), and `pipx install lyrics-tool` / `uv tool install
+lyrics-tool` work everywhere.
 
 ## AUR notes
 

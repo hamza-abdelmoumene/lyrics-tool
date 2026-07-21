@@ -135,8 +135,10 @@ the console is switched into ANSI/VT mode automatically.
 
 > ¹ macOS live sync depends on the `nowplaying-cli` helper; on macOS 15.4+ Apple
 > restricted the underlying framework, so availability can vary by OS version and
-> player. Album-art tinting is Linux-only (it needs a player-exposed art URL) —
-> on Windows/macOS use a theme colour source such as `--color-source fixed:#…`.
+> player. Album-art tinting works on Linux (MPRIS art URL) and macOS
+> (`nowplaying-cli` artwork); on Windows it's best-effort from the SMTC
+> thumbnail. If a track exposes no art, colour falls back to none — a theme
+> source (`--color-source pywal` / `caelestia` / `fixed:#…`) always works.
 
 ## Installation
 
@@ -146,13 +148,11 @@ the console is switched into ANSI/VT mode automatically.
 simplest install anywhere:
 
 ```bash
-# From PyPI (recommended)
-pipx install lyrics-tool
-#   …or with uv:
-uv tool install lyrics-tool
-
-# Latest from GitHub, no release needed
+# Directly from GitHub — works today, no release needed
 pipx install "git+https://github.com/hamza-abdelmoumene/lyrics-tool.git"
+
+# From PyPI (once published)
+pipx install lyrics-tool          # …or:  uv tool install lyrics-tool
 ```
 
 Then open a new terminal and run `lyricsooo --help`. The `lyricsooo`,
@@ -248,7 +248,7 @@ Pick a source with `--color-source` (or set `$LYRICSOOO_COLOR_SOURCE`):
 
 | Source | Colours follow | Needs |
 | ------ | -------------- | ----- |
-| `art` *(default)* | the current track's album art | Pillow + a player that exposes art (Linux) |
+| `art` *(default)* | the current track's album art | Pillow + a player/OS that exposes art (Linux, macOS; best-effort on Windows) |
 | `none` | terminal default foreground | — |
 | `pywal` | `~/.cache/wal/colors.json` | you already run wal/pywal |
 | `caelestia` | the Caelestia desktop scheme | Caelestia |
@@ -319,7 +319,7 @@ passed with `--config path/to/config.yaml`. CLI flags override the file.
 | Lyrics don't move / no sync | A player must be running. Check the startup banner's backend line; try pinning with `--player spotify`. |
 | `no synced lyrics` for a track | That song has no synced lyrics on LRCLIB — playback continues normally. |
 | Block letters look like boxes / no colour | Use a truecolor, UTF-8 terminal (Kitty, Alacritty, WezTerm, Windows Terminal, iTerm2, …). |
-| Cover tint missing on Windows/macOS | Album-art tinting is Linux-only; use `--color-source fixed:#RRGGBB` or a theme source instead. |
+| Cover tint missing | Some tracks/players expose no art (esp. streamed audio on Windows). Use `--color-source fixed:#RRGGBB` or a theme source (`pywal`/`caelestia`/`matugen`) instead. |
 | `ffprobe: not found` when processing | Install `ffmpeg`, or run `lyricsooo-cook --no-require-audio` to skip duration lookups. |
 
 ## Footprint
