@@ -6,15 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-22
+
 ### Added
 - Album-art colour tinting on macOS (`nowplaying-cli` artwork) and best-effort on
   Windows (SMTC session thumbnail), in addition to Linux — written to a temp file
   the cover extractor reads like any other art source.
+- **Distribution.** `lyrics-tool` is now installable from
+  [PyPI](https://pypi.org/project/lyrics-tool/) (`pipx install lyrics-tool`),
+  the [AUR](https://aur.archlinux.org/packages/lyrics-tool) (`lyrics-tool` and
+  `lyrics-tool-git`), and a Homebrew tap
+  (`brew install hamza-abdelmoumene/tap/lyrics-tool`).
 
 ### Changed
 - `release.yml` now always publishes a GitHub Release (with the sdist + wheel
   attached) on a `v*` tag; PyPI publishing is gated behind the `PUBLISH_TO_PYPI`
   repository variable so tagging never fails before it's configured.
+- The GitHub Release step is now idempotent (create-or-upload with `--clobber`),
+  so re-running a release tag refreshes its assets instead of failing.
 
 ## [0.2.0] — 2026-07-21
 
@@ -76,6 +85,7 @@ Initial public release.
   `fixed:`/`file:`), zero-config XDG data directories, and a stubbed-player test
   suite that runs with no playerctl, audio, or network.
 
-[Unreleased]: https://github.com/hamza-abdelmoumene/lyrics-tool/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/hamza-abdelmoumene/lyrics-tool/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/hamza-abdelmoumene/lyrics-tool/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/hamza-abdelmoumene/lyrics-tool/releases/tag/v0.2.0
 [0.1.0]: https://github.com/hamza-abdelmoumene/lyrics-tool/tree/1ec0fbf
