@@ -7,7 +7,8 @@ here are for maintainers who want native distro packages on top of that.
 
 | File | Target | Status |
 | ---- | ------ | ------ |
-| [`aur/PKGBUILD`](aur/PKGBUILD) | Arch Linux (AUR) | Template — builds from the GitHub release tag |
+| [`aur/PKGBUILD`](aur/PKGBUILD) | Arch Linux (AUR) | **Published** → [`lyrics-tool`](https://aur.archlinux.org/packages/lyrics-tool) — builds from the release tag |
+| [`aur-git/PKGBUILD`](aur-git/PKGBUILD) | Arch Linux (AUR) | **Published** → [`lyrics-tool-git`](https://aur.archlinux.org/packages/lyrics-tool-git) — builds from `main` |
 | [`homebrew/lyrics-tool.rb`](homebrew/lyrics-tool.rb) | macOS / Linuxbrew | Template — isolated virtualenv install |
 | [`../.github/workflows/release.yml`](../.github/workflows/release.yml) | PyPI | Ready — Trusted Publishing on a `v*` tag |
 
@@ -38,8 +39,27 @@ lyrics-tool` work everywhere.
 
 ## AUR notes
 
-- After bumping `pkgver`, run `updpkgsums` to pin the source checksum and
-  `makepkg --printsrcinfo > .SRCINFO` before pushing to the AUR.
+Both packages are already published (`lyrics-tool`, `lyrics-tool-git`). **On every
+new release, update the AUR** — the git one auto-follows `main`, but its `.SRCINFO`
+version and the release one both need a refresh:
+
+```bash
+# 1. release package — in packaging/aur/
+updpkgsums                              # re-pin sha256 for the new tag tarball
+#    (bump pkgver/pkgrel first if the tag changed)
+makepkg --printsrcinfo > .SRCINFO
+
+# 2. git package — in packaging/aur-git/  (regenerate so the AUR shows the new version)
+makepkg --printsrcinfo > .SRCINFO
+
+# 3. copy PKGBUILD + .SRCINFO of each into its AUR clone and push
+#    (clones live at ~/aur/lyrics-tool and ~/aur/lyrics-tool-git)
+cp packaging/aur/{PKGBUILD,.SRCINFO}     ~/aur/lyrics-tool/     && \
+  git -C ~/aur/lyrics-tool     commit -am "lyrics-tool <new-ver>" && git -C ~/aur/lyrics-tool     push
+cp packaging/aur-git/{PKGBUILD,.SRCINFO} ~/aur/lyrics-tool-git/ && \
+  git -C ~/aur/lyrics-tool-git commit -am "lyrics-tool-git <new-ver>" && git -C ~/aur/lyrics-tool-git push
+```
+
 - `python-syncedlyrics` may only be available from the AUR; the rest of the
   runtime dependencies are in the official repositories.
 

@@ -150,6 +150,8 @@ simplest install anywhere:
 ```bash
 # Directly from GitHub — works today, no release needed
 pipx install "git+https://github.com/hamza-abdelmoumene/lyrics-tool.git"
+# …or with uv:
+uv tool install "git+https://github.com/hamza-abdelmoumene/lyrics-tool.git"
 
 # From PyPI (once published)
 pipx install lyrics-tool          # …or:  uv tool install lyrics-tool
@@ -187,8 +189,8 @@ durations when processing.
 Install the System Media Transport Controls backend with the `[windows]` extra:
 
 ```powershell
-pipx install "lyrics-tool[windows]"
-# or from source:  pipx install ".[windows]"
+pipx install "lyrics-tool[windows] @ git+https://github.com/hamza-abdelmoumene/lyrics-tool.git"
+# or from a local clone:  pipx install ".[windows]"
 ```
 
 That pulls in `winsdk`. No `playerctl` needed — it reads Windows' global media
@@ -202,7 +204,7 @@ MPRIS experience.
 ```bash
 brew install nowplaying-cli      # enables live sync
 brew install ffmpeg              # optional, for audio durations
-pipx install lyrics-tool
+pipx install "git+https://github.com/hamza-abdelmoumene/lyrics-tool.git"
 ```
 </details>
 
@@ -210,7 +212,8 @@ pipx install lyrics-tool
 
 | Method | Command |
 | ------ | ------- |
-| **Arch (AUR)** | see [`packaging/aur/PKGBUILD`](packaging/aur/PKGBUILD) — `makepkg -si` |
+| **Arch (AUR)** — latest release | `yay -S lyrics-tool` &nbsp;(or `paru`, or `makepkg -si` on [`packaging/aur`](packaging/aur/PKGBUILD)) |
+| **Arch (AUR)** — build from `main` | `yay -S lyrics-tool-git` |
 | **Homebrew** | tap + `brew install lyrics-tool` — see [`packaging/homebrew`](packaging/homebrew/lyrics-tool.rb) |
 
 ### From source (development)
@@ -222,7 +225,8 @@ pip install -e '.[dev]'
 ```
 
 > **Optional — high-accuracy word timing.** Per-word onset detection uses
-> `librosa` (heavy, opt-in): `pipx install 'lyrics-tool[onset]'`.
+> `librosa` (heavy, opt-in) — add the `[onset]` extra:
+> `pipx install "lyrics-tool[onset] @ git+https://github.com/hamza-abdelmoumene/lyrics-tool.git"`.
 
 ## Player backends
 

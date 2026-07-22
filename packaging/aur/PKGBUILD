@@ -23,7 +23,7 @@ optdepends=(
 )
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')  # replace with `updpkgsums` output for the real release
+sha256sums=('340a2788c136a0429403bc760b15058b4708a683eedc1c2d946af37c1a6eb436')
 
 build() {
   cd "$pkgname-$pkgver"
