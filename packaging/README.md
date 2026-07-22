@@ -9,7 +9,6 @@ here are for maintainers who want native distro packages on top of that.
 | ---- | ------ | ------ |
 | [`aur/PKGBUILD`](aur/PKGBUILD) | Arch Linux (AUR) | **Published** → [`lyrics-tool`](https://aur.archlinux.org/packages/lyrics-tool) — builds from the release tag |
 | [`aur-git/PKGBUILD`](aur-git/PKGBUILD) | Arch Linux (AUR) | **Published** → [`lyrics-tool-git`](https://aur.archlinux.org/packages/lyrics-tool-git) — builds from `main` |
-| [`homebrew/`](homebrew/) → [homebrew-tap](https://github.com/hamza-abdelmoumene/homebrew-tap) | macOS / Linuxbrew | **Published** → `brew install hamza-abdelmoumene/tap/lyrics-tool` |
 | [`../.github/workflows/release.yml`](../.github/workflows/release.yml) | PyPI | **Published** → [`lyrics-tool`](https://pypi.org/project/lyrics-tool/) — auto-publishes on every `v*` tag (Trusted Publishing) |
 
 ## Cutting a release (PyPI)
@@ -62,14 +61,3 @@ cp packaging/aur-git/{PKGBUILD,.SRCINFO} ~/aur/lyrics-tool-git/ && \
 
 - `python-syncedlyrics` may only be available from the AUR; the rest of the
   runtime dependencies are in the official repositories.
-
-## Homebrew notes
-
-The formula now lives in its own tap:
-**[hamza-abdelmoumene/homebrew-tap](https://github.com/hamza-abdelmoumene/homebrew-tap)**
-(`Formula/lyrics-tool.rb`). On a new release, refresh it:
-
-- Bump `url`/`sha256` to the new PyPI sdist, and re-pin the dependency `resource`
-  blocks with `brew update-python-resources Formula/lyrics-tool.rb` (or
-  `brew bump-formula-pr`). The tap's `brew test` CI builds it on macOS + Linux.
-- `../homebrew/` in this repo is just a pointer — the tap is the source of truth.

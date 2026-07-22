@@ -13,10 +13,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Windows (SMTC session thumbnail), in addition to Linux — written to a temp file
   the cover extractor reads like any other art source.
 - **Distribution.** `lyrics-tool` is now installable from
-  [PyPI](https://pypi.org/project/lyrics-tool/) (`pipx install lyrics-tool`),
+  [PyPI](https://pypi.org/project/lyrics-tool/) (`pipx install lyrics-tool`) and
   the [AUR](https://aur.archlinux.org/packages/lyrics-tool) (`lyrics-tool` and
-  `lyrics-tool-git`), and a Homebrew tap
-  (`brew install hamza-abdelmoumene/tap/lyrics-tool`).
+  `lyrics-tool-git`).
 
 ### Changed
 - `release.yml` now always publishes a GitHub Release (with the sdist + wheel
@@ -47,8 +46,8 @@ Windows, and macOS through one pluggable backend layer.
   POSIX, and the Windows console is switched into ANSI/VT mode automatically.
 - **New line-reveal effects** `fade` (soft per-line fade-in) and `glow` (the
   active line gently breathes), selectable with `--reveal` or in `--select`.
-- Windows and macOS install paths, an AUR `PKGBUILD` and a Homebrew formula
-  template under `packaging/`, and a PyPI Trusted-Publishing release workflow.
+- Windows and macOS install paths, an AUR `PKGBUILD` under `packaging/`, and a
+  PyPI Trusted-Publishing release workflow.
 - Project docs: `SECURITY.md`, `CODE_OF_CONDUCT.md`, this changelog, issue/PR
   templates, and Dependabot.
 

@@ -212,7 +212,6 @@ pipx install lyrics-tool
 | ------ | ------- |
 | **Arch (AUR)** — latest release | `yay -S lyrics-tool` &nbsp;(or `paru`, or `makepkg -si` on [`packaging/aur`](packaging/aur/PKGBUILD)) |
 | **Arch (AUR)** — build from `main` | `yay -S lyrics-tool-git` |
-| **Homebrew** (macOS / Linuxbrew) | `brew install hamza-abdelmoumene/tap/lyrics-tool` |
 
 ### From source (development)
 
