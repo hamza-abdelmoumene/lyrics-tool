@@ -10,6 +10,7 @@ import colorsys
 from io import BytesIO
 from typing import Optional, Tuple
 from urllib import request
+from urllib.parse import urlparse
 
 try:
     from PIL import Image
@@ -70,7 +71,10 @@ def _download(url: str, timeout: float = 4.0) -> Optional[bytes]:
     """Fetch raw image bytes from an http(s) URL or a local ``file://`` path."""
     try:
         if url.startswith('file://'):
-            with open(url[7:], 'rb') as f:
+            # url2pathname handles the platform-specific file:// -> path mapping,
+            # including Windows drive letters (file:///C:/...) and %-encoding.
+            path = request.url2pathname(urlparse(url).path)
+            with open(path, 'rb') as f:
                 return f.read()
         with request.urlopen(url, timeout=timeout) as resp:
             return resp.read()
