@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-07-23
+
+### Fixed
+- **Auto-detect now follows the music that's actually playing.** With several
+  MPRIS players alive at once, the visualizer could latch onto whatever sorted
+  first by name — so a stopped chat-app voice message or a paused browser tab
+  would hijack the panel from the track you were listening to. The player is now
+  resolved by preferring a *Playing* source and breaking ties toward known music
+  apps, instead of trusting `playerctl`'s name-ordered pick.
+- Chat / telephony / meeting apps (Telegram, Discord, Signal, Slack, Zoom, …)
+  join web browsers in the default ignore list, and ignore matching is now
+  case-insensitive on the player's base name — previously `--ignore-player`
+  matched case-sensitively, so a player registering with capitals slipped
+  through. Pass `--ignore-player ''` to follow anything.
+
 ## [0.2.1] — 2026-07-22
 
 ### Added
