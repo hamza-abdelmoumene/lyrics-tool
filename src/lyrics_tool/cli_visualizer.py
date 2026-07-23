@@ -57,10 +57,11 @@ def main():
                              'Spotify and local players work out of the box')
     parser.add_argument('--ignore-player', type=str, default=None, metavar='LIST',
                         help="Comma-separated MPRIS players auto-detect must never "
-                             "follow. Defaults to web browsers, so a YouTube "
-                             "lecture/course playing in Firefox/Chrome can't hijack "
-                             "the lyrics from your music. Pass '' to follow anything. "
-                             "Ignored when --player pins a specific player.")
+                             "follow. Defaults to web browsers and chat/telephony "
+                             "apps, so a YouTube lecture or a Telegram voice message "
+                             "can't hijack the lyrics from your music. Auto-detect "
+                             "otherwise prefers whatever is actually playing. Pass '' "
+                             "to follow anything. Ignored when --player pins a player.")
     parser.add_argument('--player-backend', type=str, default=None, metavar='NAME',
                         help="Force the now-playing source: 'playerctl' "
                              "(Linux/MPRIS), 'smtc' (Windows), 'nowplaying-cli' "

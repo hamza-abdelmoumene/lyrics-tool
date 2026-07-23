@@ -110,8 +110,9 @@ Every command supports `--help`.
   source is pluggable (`--color-source`): follow `pywal`, `caelestia`, `matugen`,
   a `fixed:#rrggbb` accent, or `file:PATH` to track *any* JSON palette live.
 - **Auto-follow any player** — Spotify and local players out of the box; pin with
-  `--player spotify`/`mpv`. Web browsers are skipped by default so a YouTube
-  lecture can't hijack the lyrics (`--ignore-player` to customise).
+  `--player spotify`/`mpv`. Prefers whatever is actually *playing*, and skips web
+  browsers and chat/telephony apps by default, so a YouTube lecture or a Telegram
+  voice message can't hijack the lyrics (`--ignore-player` to customise).
 - **Glitch track announce** + **ad-break screen** + **floating music notes** —
   ambient polish that keeps the view alive; disable with `--no-notes`.
 - **Responsive, diffed renderer** — block letters wrap to fit and fall back to
