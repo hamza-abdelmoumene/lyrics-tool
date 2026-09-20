@@ -1,3 +1,5 @@
+
+
 <div align="center">
 
 # lyricsooo
@@ -362,6 +364,7 @@ participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ```bash
 pipx uninstall lyrics-tool
+uv tool uninstall lyrics-tool   # if you installed with uv
 rm -rf ~/.local/share/lyrics-tool ~/.local/state/lyrics-tool   # cached lyrics (optional)
 ```
 
