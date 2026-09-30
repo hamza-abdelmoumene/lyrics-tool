@@ -6,6 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `--version` on `lyricsooo`, `lyricsooo-fetch` and `lyricsooo-cook`.
+
 ## [0.2.3] — 2026-09-30
 
 ### Fixed

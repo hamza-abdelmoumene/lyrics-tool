@@ -5,6 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import __version__
 from .paths import processed_dir, ensure_dir
 
 
@@ -17,6 +18,8 @@ def main():
         description='Live terminal lyrics visualizer synced to your player '
                     '(MPRIS/playerctl · Windows SMTC · macOS nowplaying-cli)',
     )
+    parser.add_argument('--version', action='version',
+                        version=f'%(prog)s {__version__}')
     parser.add_argument('--lrc-dir', type=Path, default=None,
                         help='Directory of LRC files to display '
                              '(default: ~/.local/share/lyrics-tool/lyrics/processed)')

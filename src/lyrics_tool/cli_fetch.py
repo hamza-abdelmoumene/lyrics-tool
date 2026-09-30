@@ -6,6 +6,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from . import __version__
 from .paths import raw_dir
 
 
@@ -26,6 +27,8 @@ def main():
         prog='lyricsooo-fetch',
         description="Batch-download LRC lyrics from LRCLIB (with syncedlyrics fallback)",
     )
+    parser.add_argument('--version', action='version',
+                        version=f'%(prog)s {__version__}')
     parser.add_argument('--audio-dir', type=Path, required=True,
                         help='Directory containing audio files')
     parser.add_argument('--output-dir', type=Path, default=None,

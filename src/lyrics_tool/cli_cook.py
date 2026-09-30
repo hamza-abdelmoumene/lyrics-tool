@@ -5,6 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import __version__
 from .paths import raw_dir, processed_dir
 
 
@@ -13,6 +14,8 @@ def main():
         prog='lyricsooo-cook',
         description='Process LRC files: split long phrases and optionally convert to word-level WLRC',
     )
+    parser.add_argument('--version', action='version',
+                        version=f'%(prog)s {__version__}')
     parser.add_argument('--lrc-dir', type=Path, default=None,
                         help='Directory of input .lrc files '
                              '(default: ~/.local/share/lyrics-tool/lyrics/raw)')
