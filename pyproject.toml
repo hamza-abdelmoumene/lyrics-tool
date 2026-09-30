@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lyrics-tool"
-version = "0.2.3"
+version = "0.2.4"
 description = "Cross-platform terminal lyrics visualizer and LRC/WLRC toolkit (MPRIS · Windows SMTC · macOS)"
 readme = "README.md"
 license = { file = "LICENSE" }
