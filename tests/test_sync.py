@@ -116,6 +116,20 @@ class CoarsePositionTest(unittest.TestCase):
             self.assertEqual(det.update(float(pos)), 0.0)
         self.assertEqual(det.update(float(COARSE_AFTER)), 1.0)
 
+    def test_detector_accepts_playerctl_microsecond_slack(self):
+        # playerctl adds the microseconds since its read: cmus's whole seconds
+        # arrive as 6.000027, 7.000050, … — still a whole-second player.
+        det = QuantumDetector()
+        for pos in range(6, 6 + COARSE_AFTER):
+            det.update(pos + 0.00005)
+        self.assertEqual(det.quantum, 1.0)
+
+    def test_detector_ignores_a_precise_player(self):
+        det = QuantumDetector()
+        for i in range(40):
+            det.update(5.0 + i * 0.125)  # 8 Hz samples of a precise player
+        self.assertEqual(det.quantum, 0.0)
+
     def test_detector_drops_back_on_a_fractional_sample(self):
         det = QuantumDetector()
         for pos in range(1, COARSE_AFTER + 1):
@@ -165,6 +179,20 @@ class CoarsePositionTest(unittest.TestCase):
             prev = now
         # And it has converged onto the true position, not a second behind it.
         self.assertLess(abs(clk.position() - true), 0.13)
+
+    def test_coarse_lock_is_fast(self):
+        # Mid-window landing can start ~0.5 s off; the window edges must pull it
+        # to within one poll interval inside a couple of second-ticks.
+        for true0 in (30.02, 30.5, 30.97):
+            mono = FakeClock()
+            clk = PlaybackClock(monotonic=mono)
+            start = mono.t
+            clk.reset(math.floor(true0), sampled_at=mono.t, quantum=1.0)
+            for _ in range(24):  # 3 s at 8 Hz
+                mono.tick(0.125)
+                true = true0 + (mono.t - start)
+                clk.correct(float(math.floor(true)), mono.t, quantum=1.0)
+            self.assertLess(abs(clk.position() - true), 0.13, true0)
 
 
 class CoarseMonitorTest(unittest.TestCase):

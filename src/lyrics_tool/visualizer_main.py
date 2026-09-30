@@ -657,7 +657,7 @@ def run_visualizer(
                     last_consumed = snap.sampled_at
                     if snap.status == 'Paused':
                         if not clock.paused:
-                            clock.pause(snap.position)
+                            clock.pause(snap.position, quantum=sync_data.quantum)
                             sync_data.paused = True
                     elif clock.paused:
                         _anchor_clock(snap)          # resumed
