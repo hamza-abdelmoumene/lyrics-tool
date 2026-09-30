@@ -4,7 +4,7 @@
 # After bumping pkgver, refresh the checksum with:  updpkgsums
 # and regenerate .SRCINFO with:                     makepkg --printsrcinfo > .SRCINFO
 pkgname=lyrics-tool
-pkgver=0.2.2
+pkgver=0.2.3
 pkgrel=1
 pkgdesc="Cross-platform terminal lyrics visualizer and LRC/WLRC toolkit"
 arch=('any')

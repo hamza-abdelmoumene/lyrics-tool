@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-09-30
+
 ### Fixed
 - **No more flash of the previous line with cmus and other whole-second
   players** ([#9](https://github.com/hamza-abdelmoumene/lyrics-tool/issues/9)).
@@ -13,12 +15,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   second tick look like a seek, so the clock snapped back by up to a second and
   the previous lyric briefly reappeared after each new one. Coarse positions are
   now detected and treated as a window (`[12, 13)`) rather than a point, the
-  seek detector tolerates the truncation, and the display never steps back a
-  line for a sliver of clock correction.
+  seek detector tolerates the truncation, pause/resume no longer jump back, and
+  the display never steps back a line for a sliver of clock correction.
+- **Near-zero CPU when idle or in the background**
+  ([#9](https://github.com/hamza-abdelmoumene/lyrics-tool/issues/9)). The Linux
+  backend used to spawn `playerctl` about eight times a second — ~10% of a core
+  even with the music paused. It now keeps one `playerctl --follow` process that
+  reports track changes, play/pause and seeks as they happen, and reads the
+  position only briefly after each of those events: ~0.2–0.5% of a core while
+  playing, ~0.15% paused. Lyric sync accuracy is unchanged.
 
 ### Changed
 - Lint rules are pinned explicitly (`E4`, `E7`, `E9`, `F`) so a newer ruff that
   widens its default rule set can't fail CI on unchanged code.
+- Auto-detect rechecks which player to follow every 4 s (10 s while the
+  followed player is playing) instead of every second.
 
 ## [0.2.2] — 2026-07-23
 
@@ -113,7 +124,9 @@ Initial public release.
   `fixed:`/`file:`), zero-config XDG data directories, and a stubbed-player test
   suite that runs with no playerctl, audio, or network.
 
-[Unreleased]: https://github.com/hamza-abdelmoumene/lyrics-tool/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/hamza-abdelmoumene/lyrics-tool/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/hamza-abdelmoumene/lyrics-tool/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/hamza-abdelmoumene/lyrics-tool/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/hamza-abdelmoumene/lyrics-tool/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/hamza-abdelmoumene/lyrics-tool/releases/tag/v0.2.0
 [0.1.0]: https://github.com/hamza-abdelmoumene/lyrics-tool/tree/1ec0fbf
