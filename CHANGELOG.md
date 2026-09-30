@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **No more flash of the previous line with cmus and other whole-second
+  players** ([#9](https://github.com/hamza-abdelmoumene/lyrics-tool/issues/9)).
+  Players that publish their position truncated to whole seconds made every
+  second tick look like a seek, so the clock snapped back by up to a second and
+  the previous lyric briefly reappeared after each new one. Coarse positions are
+  now detected and treated as a window (`[12, 13)`) rather than a point, the
+  seek detector tolerates the truncation, and the display never steps back a
+  line for a sliver of clock correction.
+
+### Changed
+- Lint rules are pinned explicitly (`E4`, `E7`, `E9`, `F`) so a newer ruff that
+  widens its default rule set can't fail CI on unchanged code.
+
 ## [0.2.2] — 2026-07-23
 
 ### Fixed

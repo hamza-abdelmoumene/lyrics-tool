@@ -70,8 +70,10 @@ lyrics_tool = ["custom_fonts.json", "config_example.yaml"]
 target-version = "py39"
 
 [tool.ruff.lint]
-# Default rules (E, F) plus ignore E741: single-letter `l` reads as "line"/"letter"
-# in the renderer loops and is clear in context.
+# Pinned to ruff's classic default set (pyflakes + the pycodestyle errors) so a
+# new ruff release that widens its defaults can't turn CI red on unchanged code.
+# E741 ignored: single-letter `l` reads as "line"/"letter" in the renderer loops.
+select = ["E4", "E7", "E9", "F"]
 ignore = ["E741"]
 
 [tool.mypy]

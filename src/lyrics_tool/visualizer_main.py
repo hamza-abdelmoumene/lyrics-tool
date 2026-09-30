@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from .keyinput import KeyReader
+from .sync import QuantumDetector
 
 
 class SyncData:
@@ -27,6 +28,9 @@ class SyncData:
         self.running: bool = True
         self.current_title: Optional[str] = None
         self.paused: bool = False
+        # Position granularity of the current player: 1.0 when it reports whole
+        # seconds (cmus), 0.0 when precise. Learned by the monitor thread.
+        self.quantum: float = 0.0
 
 
 def position_monitor(sync_data: SyncData, get_state_func):
@@ -39,6 +43,7 @@ def position_monitor(sync_data: SyncData, get_state_func):
     """
     expected_pos = None
     last_sample = None
+    quantum = QuantumDetector()
 
     while sync_data.running:
         time.sleep(0.12)  # snappy track-change / seek detection
@@ -46,6 +51,7 @@ def position_monitor(sync_data: SyncData, get_state_func):
         state = get_state_func()
         if state is None:
             continue
+        sync_data.quantum = quantum.update(state.position)
         sync_data.latest = state
 
         # Track change → display loop reloads lyrics and re-announces.
@@ -68,10 +74,12 @@ def position_monitor(sync_data: SyncData, get_state_func):
             sync_data.should_resync = True
 
         # Seek detection: compare the reported position against where
-        # free-running playback should be since the previous sample.
+        # free-running playback should be since the previous sample. A coarse
+        # player's truncated position legitimately lags by up to one quantum,
+        # so widen the tolerance by it or every second tick reads as a seek.
         if expected_pos is not None and last_sample is not None:
             expected = expected_pos + (state.sampled_at - last_sample)
-            if abs(state.position - expected) > 0.5:
+            if abs(state.position - expected) > 0.5 + sync_data.quantum:
                 sync_data.should_resync = True
 
         expected_pos = state.position
@@ -240,6 +248,10 @@ LYRIC_LEAD = _default_lead()
 # Step (seconds) each +/- keypress slides the lyrics while playing.
 NUDGE_STEP = 0.05
 
+# How far (seconds) the playback estimate may slip back behind the current
+# line's start before the display actually steps back to the previous line.
+BACKSTEP_TOLERANCE = 0.4
+
 
 def _load_saved_offset() -> float:
     """Read the persisted live-nudge offset (seconds), or 0.0 if unset."""
@@ -364,7 +376,8 @@ def run_visualizer(
     def _anchor_clock(state):
         """Hard-set the clock from a fresh snapshot; mirror the paused flag."""
         paused = state.status == 'Paused'
-        clock.reset(state.position, state.sampled_at, playing=not paused)
+        clock.reset(state.position, state.sampled_at, playing=not paused,
+                    quantum=sync_data.quantum)
         sync_data.paused = paused
 
     # Live keyboard control (sync nudge). A no-op off a TTY; put the terminal in
@@ -649,7 +662,8 @@ def run_visualizer(
                     elif clock.paused:
                         _anchor_clock(snap)          # resumed
                     else:
-                        clock.correct(snap.position, snap.sampled_at)
+                        clock.correct(snap.position, snap.sampled_at,
+                                      quantum=sync_data.quantum)
 
                 # Current playback estimate. ``current_pos`` carries the lead for
                 # line selection; typewriter reveal tracks the raw position so a
@@ -662,6 +676,12 @@ def run_visualizer(
                 # correction that nudges us back across a boundary is honoured,
                 # not just forward motion.
                 idx = _index_for(lines, line_pos)
+                # Never step back a line for a sliver of clock correction: a
+                # few frames of the previous line reads as a flicker. A real
+                # seek backwards moves further than this and still goes through.
+                if (last_idx is not None and 0 <= idx < last_idx
+                        and line_pos > lines[last_idx][0] - BACKSTEP_TOLERANCE):
+                    idx = last_idx
 
                 text = '' if idx < 0 else lines[idx][1]
 

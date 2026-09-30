@@ -34,6 +34,36 @@ HARD_SNAP = 0.5
 # playback.
 SLEW_GAIN = 0.14
 
+# Consecutive whole-second samples after which a player is treated as reporting
+# a coarse, truncated position (cmus publishes whole seconds over MPRIS). Any
+# fractional sample drops it straight back to precise.
+COARSE_AFTER = 4
+
+
+class QuantumDetector:
+    """Learns whether a player's position is truncated to whole seconds.
+
+    A coarse player's ``position=12`` really means "somewhere in [12, 13)".
+    Treating it as exact makes the clock (and the seek detector) jump back by up
+    to a second every second, which re-shows the previous lyric line. Feed every
+    sample to :meth:`update`; :attr:`quantum` is 1.0 for a coarse player and 0.0
+    for a precise one.
+    """
+
+    def __init__(self):
+        self._whole_run = 0
+        self.quantum = 0.0
+
+    def update(self, position) -> float:
+        if position > 0 and abs(position - round(position)) < 1e-6:
+            self._whole_run += 1
+            if self._whole_run >= COARSE_AFTER:
+                self.quantum = 1.0
+        elif position > 0:
+            self._whole_run = 0
+            self.quantum = 0.0
+        return self.quantum
+
 
 class PlaybackClock:
     """A smooth, self-correcting estimate of raw playback position (seconds).
@@ -53,15 +83,18 @@ class PlaybackClock:
     def paused(self) -> bool:
         return self._paused
 
-    def reset(self, position, sampled_at=None, playing=True):
+    def reset(self, position, sampled_at=None, playing=True, quantum=0.0):
         """Hard-set the clock to a fresh sample.
 
         Used on the events where easing would be wrong: the first line of a
         track, a resume, or a detected seek — anywhere the estimate should jump
         straight to the truth. ``sampled_at`` (the monotonic instant the sample
         was taken) lets us compensate for the read latency so the anchor lands
-        at *now*, not a few milliseconds ago.
+        at *now*, not a few milliseconds ago. A coarse sample (``quantum`` > 0)
+        only bounds the truth to ``[position, position + quantum)``, so we land
+        in the middle of that window and let :meth:`correct` refine it.
         """
+        position += quantum / 2
         if not playing:
             self.pause(position)
             return
@@ -83,21 +116,33 @@ class PlaybackClock:
             return self._anchor_pos
         return self._anchor_pos + (self._mono() - self._anchor_at)
 
-    def correct(self, sample_pos, sampled_at) -> bool:
+    def correct(self, sample_pos, sampled_at, quantum=0.0) -> bool:
         """Fold a fresh player sample into the running estimate.
 
         Returns ``True`` when the error was large enough to snap (a seek/jump,
         so the caller should re-pick the current line immediately) and ``False``
         on an ordinary gentle slew. A no-op while paused.
+
+        With ``quantum`` > 0 the sample is a window ``[pos, pos + quantum)``
+        rather than a point: an estimate inside it is left alone and one outside
+        is eased onto the nearest edge. The window edges move exactly when the
+        player's reported second ticks over, so the estimate still converges on
+        the true position without ever being dragged back by the truncation.
         """
         if self._anchor_at is None:
             return False
         now = self._mono()
-        player_now = sample_pos + (now - sampled_at)
+        lo = sample_pos + (now - sampled_at)
+        hi = lo + quantum
         our_now = self._anchor_pos + (now - self._anchor_at)
-        err = player_now - our_now
+        if our_now < lo:
+            err = lo - our_now
+        elif our_now > hi:
+            err = hi - our_now
+        else:
+            return False
         if abs(err) > HARD_SNAP:
-            self._anchor_pos = player_now
+            self._anchor_pos = (lo + hi) / 2
             self._anchor_at = now
             return True
         # Ease a fraction of the error into the anchor; the estimate keeps
